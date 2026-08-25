@@ -1,0 +1,23 @@
+{
+  "name": "RoboS3",
+  "version": "0.1.0",
+  "description": "Biblioteca educacional modular para a PCB RoboS3 ESP32-S3-N8R2",
+  "keywords": ["robotica", "esp32-s3", "qtr", "l298n", "mpu6050", "tcs34725"],
+  "authors": [{"name": "Joao Augusto"}],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joaoaugustocz/RoboS3.git"
+  },
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "headers": "RoboS3.h",
+  "dependencies": {
+    "pololu/QTRSensors": "4.0.0",
+    "martinsos/HCSR04": "2.0.0",
+    "adafruit/Adafruit TCS34725": "1.4.4",
+    "adafruit/Adafruit BusIO": "1.17.4",
+    "electroniccats/MPU6050": "1.4.4",
+    "PIDEasy": "https://github.com/bytevoltateam/PIDEasy.git#PIDEasy-v1.0.2"
+  }
+}

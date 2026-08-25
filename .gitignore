@@ -1,0 +1,8 @@
+.pio/
+.pio-core/
+.vscode/
+_local/
+compile_commands.json
+*.bin
+*.elf
+*.map
