@@ -204,17 +204,141 @@ Consulte `13_LogicaPista`, `21_MPU6050_Curva90` e `22_MPU6050_Rampa`.
 - IMU deriva em Z: calibre imóvel, zere antes de cada curva e mantenha giros curtos.
 - Upload falha: GPIO0/strapping pode estar sendo afetado pela ponte H; desligue potência dos motores durante diagnóstico.
 
-## API pública resumida
+## Referência completa da API
 
-- Sistema: `begin`, `atualizar`, `printStatus`, disponibilidade e persistência.
-- Motores: `mover`, `frente`, `tras`, giros, motores individuais, `parar`, `frear`, inversão, mínimo e compensação.
-- Linha: raw, calibrado, leitura rica, binário, threshold, calibração, erro, PID e tempo sem linha.
-- Ultrassom: `distanciaCM`, `temObstaculo`.
-- Cores: leitura completa/RGB/HSV/HSL/classificação, faixas, calibração, gain e integration time.
-- IMU: leitura, atualização, roll, pitch, Z relativo, zero, inclinação e calibração.
-- Hardware: overrides de QTR, ponte H, ultrassom, I2C e endereço do MPU.
+Todos os métodos abaixo pertencem a `RoboS3`. Crie uma única instância, configure o que for necessário e chame `begin()` uma vez. Métodos de pinagem devem vir **antes** de `begin()`; os demais, depois dela.
 
-Os 25 exemplos em `examples/` cobrem cada nível da API.
+### 1. Sistema, status e depuração
+
+| Método | Aplicação |
+|---|---|
+| `RoboS3()` | Cria o objeto com a pinagem padrão da PCB. |
+| `begin()` | Inicializa ponte H, QTR, ultrassom, I2C, cores, IMU e configurações salvas. Retorna `true` somente se motores e linha iniciaram. |
+| `atualizar()` | Atualiza IMU e interfaces Serial/Web habilitadas. Chame continuamente no `loop()`. |
+| `status()` | Retorna `const StatusRobo&` com o estado de todos os módulos. |
+| `linhaDisponivel()` / `ultrassomDisponivel()` / `imuDisponivel()` | Informam se o periférico iniciou corretamente. |
+| `corDisponivel(sensor)` | Informa se o TCS34725 de `COR_ESQUERDA` ou `COR_DIREITA` está disponível. |
+| `printStatus(out)` | Imprime o estado dos módulos; o destino padrão é `Serial`. |
+| `setDebugLevel(nivel)` | Seleciona `DEBUG_OFF`, `DEBUG_ERROR`, `DEBUG_INFO` ou `DEBUG_VERBOSE`. |
+
+### 2. Motores e ponte H L298N
+
+Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero para o motor.
+
+| Método | Aplicação |
+|---|---|
+| `mover(esquerda, direita)` | Comanda os dois motores independentemente; base para curvas suaves. |
+| `frente(velocidade)` / `tras(velocidade)` | Deslocamento retilíneo. |
+| `girarEsquerda(velocidade)` / `girarDireita(velocidade)` | Giro no próprio eixo. |
+| `motorEsquerdo(velocidade)` / `motorDireito(velocidade)` | Atualiza somente um motor e preserva o comando do outro. |
+| `parar()` | Desliga enables: parada livre (*coast*). |
+| `frear()` | Aplica frenagem ativa na ponte H. |
+| `inverterMotorEsquerdo(invertido)` / `inverterMotorDireito(invertido)` | Inverte eletricamente um motor. |
+| `inverterMotores(esquerdo, direito)` | Configura as duas inversões de uma vez. |
+| `configurarMinimoMovimento(motor, sentido, minimo)` | Define PWM mínimo de partida `0…100` para cada motor e sentido. |
+| `configurarCompensacaoMotor(motor, sentido, fator)` | Aplica multiplicador para corrigir velocidades diferentes; `1.0` não altera. |
+| `printMotores(out)` | Mostra comandos e calibração atual. |
+
+### 3. Sensor de linha QTR e pista
+
+| Método | Aplicação |
+|---|---|
+| `lerLinha()` | Retorna `LeituraLinha`: dados brutos, calibrados, máscara, padrão, posição e tempo sem linha. |
+| `lerLinhaBruta(saida)` | Preenche `uint16_t saida[8]` com a leitura física. |
+| `lerLinhaCalibrada(saida)` | Preenche `uint16_t saida[8]` com valores `0…1000`. |
+| `lerLinhaBinaria()` | Retorna a máscara de sensores pretos: S1 é bit 7 e S8 é bit 0. |
+| `ultimaLeituraLinha()` | Retorna a última `LeituraLinha`, sem nova aquisição. |
+| `tempoSemLinha()` | Retorna milissegundos desde a última detecção válida. |
+| `calibrarLinha(ms)` | Para os motores e coleta extremos por tempo; padrão 5000 ms. É bloqueante. |
+| `calibrarLinhaAmostras(amostras)` | Variante bloqueante por quantidade de amostras. |
+| `configurarLimiarLinha(limiar)` | Define o limiar binário `0…1000`; inicial 500. |
+| `erroLinha(centro)` | Retorna `posição - centro`; centro padrão 3500. |
+| `printLinha(out)` | Imprime valores, padrão, máscara, posição e tempo sem linha. |
+
+`LeituraLinha` também fornece `semPreto()`, `todosPretos()`, `temPretoEsquerda()`, `temPretoCentro()` e `temPretoDireita()`. Os campos principais são `padrao`, `mascara`, `quantidadePretos`, `posicao`, `detectada` e `posicaoValida`.
+
+### 4. PID para seguidor de linha
+
+| Método | Aplicação |
+|---|---|
+| `configurarPID(kp, ki, kd)` | Define os ganhos proporcional, integral e derivativo. |
+| `resetPID()` | Zera memória integral e derivativa, por exemplo ao reiniciar a pista. |
+| `calcularPID(erro)` | Retorna a correção limitada para um erro informado. |
+| `seguirLinha(velocidadeBase)` | Lê a linha, calcula PID e comanda os motores; para se não houver linha. |
+
+### 5. Distância e obstáculo (HC-SR04)
+
+| Método | Aplicação |
+|---|---|
+| `distanciaCM()` | Retorna centímetros ou `NAN` quando a leitura falha. |
+| `temObstaculo(maximoCm)` | Retorna `true` somente para medida válida até o limite. |
+
+### 6. Cores: dois TCS34725, RGB, HSV e HSL
+
+Use `COR_ESQUERDA` ou `COR_DIREITA` para selecionar o módulo.
+
+| Método | Aplicação |
+|---|---|
+| `lerDadosCor(sensor)` | Retorna `LeituraCor` completa: RGB, HSV, HSL, raw, clear, classificação e timestamp. |
+| `lerRGB(sensor)` / `lerHSV(sensor)` / `lerHSL(sensor)` | Retornam somente a conversão solicitada. RGB é `0…255`; HSV/HSL usam hue `0…360`. |
+| `lerCor(sensor)` | Retorna `CorDetectada`, como `COR_VERDE` ou `COR_DESCONHECIDA`. |
+| `definirFaixaH(sensor, cor, hMin, hMax)` | Define hue; pode cruzar 360°, por exemplo `345, 15`. |
+| `definirFaixaHSV(sensor, cor, hMin, hMax, sMin, sMax, vMin, vMax)` | Define a faixa completa de classificação. |
+| `calibrarCor(sensor, cor, amostras)` | Coleta faixa HSV para a cor sob o sensor; padrão 30 amostras. |
+| `setGanhoCor(sensor, ganho)` | Seleciona `GANHO_1X`, `GANHO_4X`, `GANHO_16X` ou `GANHO_60X`. |
+| `setTempoIntegracaoCor(sensor, tempo)` | Seleciona integração de 2,4; 24; 50; 101; 154 ou 600 ms. |
+| `printCores(out)` | Imprime os dois sensores. |
+
+### 7. Orientação e inclinação (MPU6050)
+
+Use `atualizar()` no `loop()` ou `atualizarIMU()` antes de consultar ângulos. O yaw/Z é relativo, não uma bússola.
+
+| Método | Aplicação |
+|---|---|
+| `lerIMU()` | Atualiza e retorna `LeituraIMU`: aceleração, giroscópio, temperatura e ângulos. |
+| `atualizarIMU()` | Atualiza somente a estimativa da IMU. |
+| `roll()` / `pitch()` | Retornam inclinação lateral e longitudinal em graus. |
+| `anguloZ()` | Retorna yaw/Z relativo desde a última zeragem. |
+| `zerarAnguloZ()` | Define o yaw atual como zero; use antes de curvas controladas. |
+| `estaInclinado(graus)` | Retorna `true` se `abs(roll)` ou `abs(pitch)` atingir o limite. |
+| `calibrarIMU(ms)` | Para motores e calibra offsets com o robô imóvel; padrão 3000 ms. É bloqueante. |
+| `printIMU(out)` | Imprime dados atuais da IMU. |
+
+### 8. Persistência de calibração
+
+| Método | Aplicação |
+|---|---|
+| `salvarCalibracao()` | Salva limites QTR, calibração dos motores, faixas de cor e offsets da IMU no NVS. |
+| `carregarCalibracao()` | Carrega e aplica os valores gravados; retorna `false` se não houver dado válido. |
+| `apagarCalibracao()` | Remove a calibração persistida. |
+
+### 9. Configuração de hardware e pinagem
+
+Chame estes métodos somente antes de `begin()`.
+
+| Método | Aplicação |
+|---|---|
+| `definePinsQTR(s1, …, s8, emitter)` | Define os oito GPIOs QTR e emitter opcional; use `0xFF` quando não existir emitter. |
+| `setTipoQTR(tipo)` | Seleciona `QTR_8A` ou `QTR_8RC`. |
+| `setTipoLinha(tipo)` | Seleciona `LINHA_PRETA` ou `LINHA_BRANCA`. |
+| `definePinsPonteH(ena, in1, in2, in3, in4, enb)` | Define toda a pinagem L298N. |
+| `definePinsUltrassom(trigger, echo)` | Define os pinos do HC-SR04. |
+| `definePinsI2C0(sda, scl, frequencia)` / `definePinsI2C1(sda, scl, frequencia)` | Define cada barramento I2C; padrão 400000 Hz. |
+| `configurarIMU(endereco)` | Define endereço I2C MPU6050, normalmente `0x68`. |
+
+### 10. Tipos retornados
+
+| Tipo | Campos ou valores principais |
+|---|---|
+| `Motor` / `SentidoMotor` | `MOTOR_ESQUERDO`, `MOTOR_DIREITO`; `FRENTE`, `TRAS`. |
+| `TipoQTR` / `TipoLinha` | `QTR_8A`, `QTR_8RC`; `LINHA_PRETA`, `LINHA_BRANCA`. |
+| `SensorCor` / `CorDetectada` | Lado esquerdo/direito; preta, branca, vermelha, verde, azul, amarela, laranja, roxa ou desconhecida. |
+| `RGB`, `HSV`, `HSL` | Conversões retornadas pelas leituras de cor. |
+| `LeituraCor` | `rgb`, `hsv`, `hsl`, raw, `clear`, `cor`, `valida`, `timestampMs`. |
+| `LeituraIMU` | `accX/Y/Z`, `gyroX/Y/Z`, `roll`, `pitch`, `yawRelativo`, `temperatura`, `valida`, `timestampMs`. |
+| `StatusRobo` | Flags de disponibilidade dos módulos e da calibração salva. |
+
+Os 25 exemplos em `examples/` seguem essa divisão: básicos e motores (01–04), ultrassom (05), linha/PID (06–13), cores (14–18), IMU (19–22), calibração Web/Serial (23–24) e pinagem alternativa (25).
 
 ## Limites de validação
 
