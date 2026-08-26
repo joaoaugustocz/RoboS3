@@ -7,38 +7,42 @@
 namespace robos3
 {
 
+/** @brief GPIOs da ponte H na ordem eletrica usada pela RoboS3. */
 struct MotorPins
 {
-    uint8_t ena;
-    uint8_t in1;
-    uint8_t in2;
-    uint8_t in3;
-    uint8_t in4;
-    uint8_t enb;
+    uint8_t ena; ///< Enable/PWM do motor esquerdo.
+    uint8_t in1; ///< Direcao 1 do motor esquerdo.
+    uint8_t in2; ///< Direcao 2 do motor esquerdo.
+    uint8_t in3; ///< Direcao 1 do motor direito.
+    uint8_t in4; ///< Direcao 2 do motor direito.
+    uint8_t enb; ///< Enable/PWM do motor direito.
 };
 
+/** @brief GPIOs e frequencia de um barramento I2C. */
 struct I2CPins
 {
-    uint8_t sda;
-    uint8_t scl;
-    uint32_t frequency;
+    uint8_t sda;        ///< GPIO de dados.
+    uint8_t scl;        ///< GPIO de clock.
+    uint32_t frequency; ///< Frequencia em hertz.
 };
 
+/** @brief Configuracao eletrica completa da placa usada por RoboS3::begin(). */
 struct BoardConfig
 {
-    uint8_t qtrPins[8];
-    uint8_t qtrEmitterPin;
-    TipoQTR qtrType;
-    MotorPins motors;
-    uint8_t ultrasonicTrig;
-    uint8_t ultrasonicEcho;
-    I2CPins i2c0;
-    I2CPins i2c1;
-    uint8_t mpuAddress;
-    int8_t mpuInterrupt;
-    uint32_t pwmFrequency;
-    uint8_t pwmResolution;
+    uint8_t qtrPins[8];      ///< GPIOs QTR na ordem S1...S8.
+    uint8_t qtrEmitterPin;   ///< Controle do emissor ou 0xFF quando ausente.
+    TipoQTR qtrType;         ///< Tipo eletrico do conjunto QTR.
+    MotorPins motors;        ///< Pinagem da ponte H.
+    uint8_t ultrasonicTrig;  ///< GPIO TRIG do ultrassom.
+    uint8_t ultrasonicEcho;  ///< GPIO ECHO do ultrassom.
+    I2CPins i2c0;            ///< Barramento do TCS esquerdo e MPU6050.
+    I2CPins i2c1;            ///< Barramento do TCS direito.
+    uint8_t mpuAddress;      ///< Endereco I2C da MPU6050.
+    int8_t mpuInterrupt;     ///< GPIO INT ou -1 quando ausente.
+    uint32_t pwmFrequency;   ///< Frequencia PWM dos motores em hertz.
+    uint8_t pwmResolution;   ///< Resolucao PWM em bits.
 
+    /** @return Configuracao correspondente a PCB ESP_FB V1. */
     static BoardConfig padrao()
     {
         BoardConfig c{};

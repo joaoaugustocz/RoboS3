@@ -2,25 +2,29 @@
 
 #include <stdint.h>
 
+/** @brief Identifica um dos dois motores da base. */
 enum Motor : uint8_t
 {
-    MOTOR_ESQUERDO = 0,
-    MOTOR_DIREITO = 1
+    MOTOR_ESQUERDO = 0, ///< Motor do lado esquerdo.
+    MOTOR_DIREITO = 1  ///< Motor do lado direito.
 };
+/** @brief Identifica o sentido usado nas calibracoes de motor. */
 enum SentidoMotor : uint8_t
 {
-    FRENTE = 0,
-    TRAS = 1
+    FRENTE = 0, ///< Movimento para frente.
+    TRAS = 1    ///< Movimento para tras.
 };
+/** @brief Seleciona a interface eletrica do conjunto QTR. */
 enum TipoQTR : uint8_t
 {
-    QTR_8A = 0,
-    QTR_8RC = 1
+    QTR_8A = 0, ///< Oito saidas analogicas.
+    QTR_8RC = 1 ///< Oito saidas RC temporizadas.
 };
+/** @brief Seleciona a polaridade visual da pista seguida. */
 enum TipoLinha : uint8_t
 {
-    LINHA_PRETA = 0,
-    LINHA_BRANCA = 1
+    LINHA_PRETA = 0, ///< Linha escura sobre fundo claro.
+    LINHA_BRANCA = 1 ///< Linha clara sobre fundo escuro.
 };
 /**
  * @brief Padrao binario dos oito sensores de linha.
@@ -292,91 +296,113 @@ enum PadraoLinha : uint8_t
 /** Quantidade maxima de mudancas de padrao mantidas sem alocacao dinamica. */
 constexpr uint8_t MAX_HISTORICO_LINHA = 32;
 
+/** @brief Identifica um dos dois sensores TCS34725. */
 enum SensorCor : uint8_t
 {
-    COR_ESQUERDA = 0,
-    COR_DIREITA = 1
+    COR_ESQUERDA = 0, ///< Sensor ligado ao I2C0.
+    COR_DIREITA = 1   ///< Sensor ligado ao I2C1.
 };
 
+/** @brief Resultado possivel da classificacao HSV. */
 enum CorDetectada : uint8_t
 {
-    COR_DESCONHECIDA = 0,
-    COR_PRETA,
-    COR_BRANCA,
-    COR_VERMELHA,
-    COR_VERDE,
-    COR_AZUL,
-    COR_AMARELA,
-    COR_LARANJA,
-    COR_ROXA,
-    COR_TOTAL
+    COR_DESCONHECIDA = 0, ///< Nenhuma faixa ativa correspondeu.
+    COR_PRETA,            ///< Preto.
+    COR_BRANCA,           ///< Branco.
+    COR_VERMELHA,         ///< Vermelho.
+    COR_VERDE,            ///< Verde.
+    COR_AZUL,             ///< Azul.
+    COR_AMARELA,          ///< Amarelo.
+    COR_LARANJA,          ///< Laranja.
+    COR_ROXA,             ///< Roxo.
+    COR_TOTAL             ///< Sentinela com a quantidade de classificacoes.
 };
 
+/** @brief Ganhos analogicos suportados pelo TCS34725. */
 enum GanhoCor : uint8_t
 {
-    GANHO_1X = 0,
-    GANHO_4X,
-    GANHO_16X,
-    GANHO_60X
+    GANHO_1X = 0, ///< Ganho 1x.
+    GANHO_4X,     ///< Ganho 4x.
+    GANHO_16X,    ///< Ganho 16x.
+    GANHO_60X     ///< Ganho 60x.
 };
+/** @brief Tempos de integracao suportados pelo TCS34725. */
 enum TempoIntegracaoCor : uint8_t
 {
-    INTEGRACAO_2_4MS = 0,
-    INTEGRACAO_24MS,
-    INTEGRACAO_50MS,
-    INTEGRACAO_101MS,
-    INTEGRACAO_154MS,
-    INTEGRACAO_600MS
+    INTEGRACAO_2_4MS = 0, ///< 2,4 ms.
+    INTEGRACAO_24MS,      ///< 24 ms.
+    INTEGRACAO_50MS,      ///< 50 ms.
+    INTEGRACAO_101MS,     ///< 101 ms.
+    INTEGRACAO_154MS,     ///< 154 ms.
+    INTEGRACAO_600MS      ///< 600 ms.
 };
 
+/** @brief Severidade minima das mensagens internas de diagnostico. */
 enum DebugLevel : uint8_t
 {
-    DEBUG_OFF = 0,
-    DEBUG_ERROR,
-    DEBUG_INFO,
-    DEBUG_VERBOSE
+    DEBUG_OFF = 0, ///< Desativa mensagens internas.
+    DEBUG_ERROR,   ///< Exibe somente falhas.
+    DEBUG_INFO,    ///< Exibe falhas e eventos principais.
+    DEBUG_VERBOSE  ///< Exibe todos os detalhes disponiveis.
 };
 
+/** @brief Ajustes independentes de um motor para frente e para tras. */
 struct CalibracaoMotor
 {
-    float compensacaoFrente;
-    float compensacaoTras;
-    uint8_t minimoFrente;
-    uint8_t minimoTras;
-    bool invertido;
+    float compensacaoFrente; ///< Multiplicador do comando para frente.
+    float compensacaoTras;   ///< Multiplicador do comando para tras.
+    uint8_t minimoFrente;    ///< Menor comando util para frente, 0...100.
+    uint8_t minimoTras;      ///< Menor comando util para tras, 0...100.
+    bool invertido;          ///< Inverte a polaridade eletrica quando true.
 };
 
+/** @brief Cor RGB normalizada, com cada canal na faixa 0...255. */
 struct RGB
 {
-    float r, g, b;
+    float r; ///< Canal vermelho.
+    float g; ///< Canal verde.
+    float b; ///< Canal azul.
 };
+/** @brief Cor HSV com H em graus e S/V em porcentagem. */
 struct HSV
 {
-    float h, s, v;
+    float h; ///< Matiz de 0 a 360 graus.
+    float s; ///< Saturacao de 0 a 100 por cento.
+    float v; ///< Valor de 0 a 100 por cento.
 };
+/** @brief Cor HSL com H em graus e S/L em porcentagem. */
 struct HSL
 {
-    float h, s, l;
+    float h; ///< Matiz de 0 a 360 graus.
+    float s; ///< Saturacao de 0 a 100 por cento.
+    float l; ///< Luminosidade de 0 a 100 por cento.
 };
 
+/** @brief Intervalo HSV usado para classificar uma cor. */
 struct FaixaHSV
 {
-    float hMin, hMax;
-    float sMin, sMax;
-    float vMin, vMax;
-    bool ativa;
+    float hMin; ///< Menor matiz; pode formar intervalo circular com hMax.
+    float hMax; ///< Maior matiz; pode ser menor que hMin ao cruzar 360 graus.
+    float sMin; ///< Saturacao minima em porcentagem.
+    float sMax; ///< Saturacao maxima em porcentagem.
+    float vMin; ///< Valor minimo em porcentagem.
+    float vMax; ///< Valor maximo em porcentagem.
+    bool ativa; ///< Define se a faixa participa da classificacao.
 };
 
 /** @brief Resultado completo de uma aquisicao do TCS34725. */
 struct LeituraCor
 {
-    RGB rgb;                        ///< Canais normalizados em 0...255.
-    HSV hsv;                        ///< Hue 0...360 e saturacao/valor 0...100.
-    HSL hsl;                        ///< Hue 0...360 e saturacao/luz 0...100.
-    uint16_t rRaw, gRaw, bRaw, clear; ///< Canais crus entregues pelo sensor.
-    CorDetectada cor;               ///< Classificacao pelas faixas configuradas.
-    bool valida;                    ///< false quando o sensor nao esta disponivel.
-    uint32_t timestampMs;           ///< Instante da leitura segundo millis().
+    RGB rgb;               ///< Canais normalizados em 0...255.
+    HSV hsv;               ///< Hue 0...360 e saturacao/valor 0...100.
+    HSL hsl;               ///< Hue 0...360 e saturacao/luz 0...100.
+    uint16_t rRaw;         ///< Canal vermelho cru entregue pelo sensor.
+    uint16_t gRaw;         ///< Canal verde cru entregue pelo sensor.
+    uint16_t bRaw;         ///< Canal azul cru entregue pelo sensor.
+    uint16_t clear;        ///< Canal clear cru usado na normalizacao.
+    CorDetectada cor;      ///< Classificacao pelas faixas configuradas.
+    bool valida;           ///< false quando o sensor nao esta disponivel.
+    uint32_t timestampMs;  ///< Instante da leitura segundo millis().
 };
 
 /** @brief Resultado completo derivado de uma unica aquisicao dos oito QTR. */
@@ -425,38 +451,45 @@ struct LeituraLinha
 /** @brief Aceleracao, giroscopio, temperatura e orientacao estimada. */
 struct LeituraIMU
 {
-    float accX, accY, accZ;
-    float gyroX, gyroY, gyroZ;
-    float roll, pitch, yawRelativo;
-    float temperatura;
-    bool valida;
-    uint32_t timestampMs;
+    float accX;            ///< Aceleracao no eixo X em metros por segundo ao quadrado.
+    float accY;            ///< Aceleracao no eixo Y em metros por segundo ao quadrado.
+    float accZ;            ///< Aceleracao no eixo Z em metros por segundo ao quadrado.
+    float gyroX;           ///< Velocidade angular X em graus por segundo.
+    float gyroY;           ///< Velocidade angular Y em graus por segundo.
+    float gyroZ;           ///< Velocidade angular Z em graus por segundo.
+    float roll;            ///< Inclinacao lateral estimada em graus.
+    float pitch;           ///< Inclinacao longitudinal estimada em graus.
+    float yawRelativo;     ///< Rotacao Z integrada e relativa em graus.
+    float temperatura;     ///< Temperatura interna da IMU em graus Celsius.
+    bool valida;           ///< false quando a IMU nao esta disponivel.
+    uint32_t timestampMs;  ///< Instante da leitura segundo millis().
 };
 
 /** @brief Disponibilidade individual dos modulos apos begin(). */
 struct StatusRobo
 {
-    // Cada campo informa se aquele modulo foi iniciado e pode ser usado.
-    bool motores;
-    bool linha;
-    bool ultrassom;
-    bool i2c0;
-    bool i2c1;
-    bool corEsquerda;
-    bool corDireita;
-    bool imu;
+    bool motores;       ///< Ponte H configurada e pronta.
+    bool linha;         ///< Conjunto QTR configurado e pronto.
+    bool ultrassom;     ///< Driver ultrassonico configurado.
+    bool i2c0;          ///< Barramento I2C0 iniciado.
+    bool i2c1;          ///< Barramento I2C1 iniciado.
+    bool corEsquerda;   ///< TCS34725 esquerdo detectado.
+    bool corDireita;    ///< TCS34725 direito detectado.
+    bool imu;           ///< MPU6050 detectada.
 
-    // Ausencia de calibracao salva nao e falha de hardware. A biblioteca usa
-    // valores padrao ate que o usuario execute e salve uma calibracao.
-    bool calibracaoCarregada;
+    /**
+     * Ausencia de calibracao salva nao e falha de hardware. A biblioteca usa
+     * valores padrao ate que o usuario execute e salve uma calibracao.
+     */
+    bool calibracaoCarregada; ///< Existe calibracao persistida valida e aplicada.
 
-    // Retorna true quando todo o hardware previsto na PCB respondeu ao begin().
+    /** @return true quando todo o hardware previsto respondeu ao begin(). */
     bool inicializacaoCompleta() const
     {
         return motores && linha && ultrassom && i2c0 && i2c1 && corEsquerda && corDireita && imu;
     }
 
-    // Motores e linha formam o conjunto minimo para um seguidor de linha simples.
+    /** @return true quando motores e linha permitem um seguidor simples. */
     bool operacaoBasicaDisponivel() const
     {
         return motores && linha;
@@ -471,7 +504,7 @@ struct StatusRobo
  */
 struct CasoLinha
 {
-    PadraoLinha padrao;
-    uint32_t inicioMs;
-    uint32_t duracaoMs;
+    PadraoLinha padrao;  ///< Caso P/B observado.
+    uint32_t inicioMs;   ///< Inicio da permanencia segundo millis().
+    uint32_t duracaoMs;  ///< Duracao ate a mudanca ou consulta mais recente.
 };

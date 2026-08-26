@@ -2,6 +2,20 @@
 
 Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**, baseada no **ESP32-S3-N8R2**. A API começa simples (`frente`, `parar`, `seguirLinha`) e preserva acesso a valores brutos, calibração, máscara, PID, RGB/HSV/HSL e IMU para o aluno evoluir sem trocar de biblioteca.
 
+**Versão estável:** 0.2.0 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
+
+## Conteúdo
+
+- [Hardware e pinagem](#hardware-e-pinagem)
+- [Instalação](#instalação)
+- [Primeiro programa](#primeiro-programa)
+- [Motores, linha e PID](#motores-e-l298n)
+- [Ultrassom, cores e IMU](#hc-sr04)
+- [Calibração e debug](#persistência)
+- [Referência completa da API](#referência-completa-da-api)
+- [Exemplos](#exemplos-incluídos)
+- [Limites de validação](#limites-de-validação)
+
 > Estado do hardware: o repositório recebido estava vazio e não continha esquemático/PCB. A pinagem abaixo foi reconstruída das capturas de layout fornecidas. Ela precisa de teste elétrico na placa antes de movimentar um robô apoiado no chão.
 
 ## Hardware e pinagem
@@ -24,6 +38,14 @@ Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**
 Não foram comprovados LED, botão ou buzzer controláveis. `BoardPins.h` usa `-1` para esses periféricos. GPIO0 é pino de strapping; mantenha a ponte H sem forçar nível indevido durante boot. O ECHO do HC-SR04 precisa chegar ao ESP32 em **3,3 V**; confirme divisor/level shifter na placa.
 
 ## Instalação
+
+### Arduino IDE
+
+Abra **Ferramentas → Gerenciar Bibliotecas**, pesquise por `RoboS3` e instale a versão mais recente. As dependências declaradas em `library.properties` serão resolvidas pelo gerenciador. Depois selecione uma placa ESP32-S3 compatível e abra um sketch em **Arquivo → Exemplos → RoboS3**.
+
+Para instalar uma versão baixada do GitHub, use **Sketch → Incluir Biblioteca → Adicionar Biblioteca .ZIP** e selecione o arquivo da [release desejada](https://github.com/joaoaugustocz/RoboS3/releases). Não mantenha duas cópias de RoboS3 na pasta de bibliotecas, pois a IDE pode escolher a versão errada.
+
+### PlatformIO
 
 Em um projeto PlatformIO:
 
@@ -302,6 +324,24 @@ Consulte `13_LogicaPista`, `21_MPU6050_Curva90` e `22_MPU6050_Rampa`.
 
 Todos os métodos abaixo pertencem a `RoboS3`. Crie uma única instância, configure o que for necessário e chame `begin()` uma vez. Métodos de pinagem devem vir **antes** de `begin()`; os demais, depois dela.
 
+As assinaturas mostram parâmetros obrigatórios e opcionais; valores entre parênteses indicam a unidade ou a faixa esperada. Métodos `void` produzem o efeito descrito e métodos com retorno informam explicitamente o tipo e o significado. Operações bloqueantes estão marcadas. O contrato definitivo da API fica em [`src/RoboS3.h`](src/RoboS3.h).
+
+### Documentação exibida pela IDE
+
+Todos os elementos públicos da biblioteca usam comentários Doxygen. VS Code/PlatformIO e IDEs compatíveis exibem `@brief`, parâmetros, retorno, unidades e observações ao passar o mouse sobre classes, tipos ou métodos. Ao adicionar uma API pública, mantenha este padrão:
+
+```cpp
+/**
+ * @brief Explica objetivamente o que a função faz.
+ * @param valor Informa significado, unidade e faixa válida.
+ * @return Explica o tipo retornado e também valores de falha.
+ * @note Registra efeitos colaterais, bloqueios ou ordem obrigatória de chamadas.
+ */
+bool exemplo(uint16_t valor);
+```
+
+Use `@return` em funções não `void`, documente cada `@param`, declare unidades (`ms`, `cm`, graus, porcentagem) e informe quando uma função faz aquisição física, altera histórico, grava flash ou bloqueia o programa.
+
 ### 1. Sistema, status e depuração
 
 | Método | Aplicação |
@@ -445,8 +485,43 @@ Chame estes métodos somente antes de `begin()`.
 | `LeituraIMU` | `accX/Y/Z`, `gyroX/Y/Z`, `roll`, `pitch`, `yawRelativo`, `temperatura`, `valida`, `timestampMs`. |
 | `StatusRobo` | Flags de disponibilidade dos módulos e da calibração salva; também oferece `inicializacaoCompleta()` e `operacaoBasicaDisponivel()`. |
 
-Os 28 exemplos em `examples/` seguem essa divisão: básicos e motores (01–04), ultrassom (05), linha/PID (06–13), cores (14–18), IMU (19–22), calibração Web/Serial (23–24), pinagem alternativa (25), diagnóstico de inicialização (26), histórico de linha (27) e calibração manual de cor (28).
+#### Unidades e validade dos campos
+
+| Estrutura/campo | Unidade ou domínio | Observação |
+|---|---|---|
+| `LeituraLinha.bruto[8]` | leitura física do QTR | Ordem S1…S8; a escala depende de `QTR_8A` ou `QTR_8RC`. |
+| `LeituraLinha.calibrado[8]` | `0…1000` | Valores normalizados pelos extremos de calibração. |
+| `LeituraLinha.mascara` / `.caso` | byte / `PadraoLinha` | S1 é bit 7, S8 é bit 0 e preto físico vale 1. |
+| `LeituraLinha.posicao` | `0…7000` | Centro geométrico 3500; confira `posicaoValida` antes de usar. |
+| `LeituraLinha.timestampMs` / `.tempoSemLinhaMs` | milissegundos | Baseados em `millis()` e sujeitos ao rollover normal do Arduino. |
+| `CasoLinha.inicioMs` / `.duracaoMs` | milissegundos | O caso atual continua acumulando duração até a consulta. |
+| `LeituraCor.rgb` | `0…255` | Canais normalizados pelo canal clear. |
+| `LeituraCor.hsv` | H `0…360`; S/V `0…100` | Confira `valida` antes de classificar ou controlar o robô. |
+| `LeituraCor.hsl` | H `0…360`; S/L `0…100` | Conversão derivada da mesma aquisição RGB. |
+| `LeituraIMU.accX/Y/Z` | m/s² | Aceleração calculada com a escala configurada da MPU6050. |
+| `LeituraIMU.gyroX/Y/Z` | graus/s | Velocidade angular após aplicação dos offsets. |
+| `LeituraIMU.roll/pitch/yawRelativo` | graus | Yaw é relativo e deriva; não é direção magnética. |
+| `LeituraIMU.temperatura` | °C | Temperatura interna do chip, não do ambiente. |
+| `*.timestampMs` | milissegundos | Instante de aquisição segundo `millis()`. |
+
+## Exemplos incluídos
+
+Os 28 sketches em [`examples/`](examples) seguem uma progressão didática:
+
+| Faixa | Aplicação |
+|---|---|
+| 01–04 | início, motores e calibração dos motores |
+| 05 | sensor ultrassônico |
+| 06–13 | QTR bruto/calibrado, padrões, PID e lógica de pista |
+| 14–18 | RGB, HSV/HSL, detecção e calibração de cor |
+| 19–22 | MPU6050, ângulos, curva de 90° e rampa |
+| 23–24 | calibração Web e Serial |
+| 25–28 | pinagem alternativa, erros do `begin()`, histórico e cor manual |
 
 ## Limites de validação
 
 Compilação não valida polaridade física dos motores, ordem esquerda/direita, divisor de tensão do ECHO, orientação mecânica do MPU, posição física S1/S8, presença dos sensores nem qualidade das faixas de cor. Esses pontos exigem placa conectada; nenhuma porta serial foi detectada durante o desenvolvimento.
+
+## Licença e manutenção
+
+Distribuída sob a [licença MIT](LICENSE). Ao alterar a API pública, atualize em conjunto o comentário Doxygen, esta referência, ao menos um exemplo relevante e o `CHANGELOG.md`; depois compile `robos3`, `robos3_calibration` e `examples_all` antes de publicar uma nova versão.

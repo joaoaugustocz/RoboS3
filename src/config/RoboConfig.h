@@ -5,18 +5,20 @@
 namespace robos3
 {
 
+/** @brief Parametros logicos e eletricos usados pela interface RoboS3. */
 struct RoboConfig
 {
-    BoardConfig board;
-    TipoLinha tipoLinha;
-    uint16_t limiarLinha;
-    float kp;
-    float ki;
-    float kd;
-    int16_t limitePID;
-    CalibracaoMotor motorEsquerdo;
-    CalibracaoMotor motorDireito;
+    BoardConfig board;                ///< Pinagem e parametros eletricos.
+    TipoLinha tipoLinha;              ///< Linha preta ou branca.
+    uint16_t limiarLinha;             ///< Limiar QTR calibrado de 0 a 1000.
+    float kp;                         ///< Ganho proporcional do PID.
+    float ki;                         ///< Ganho integral do PID.
+    float kd;                         ///< Ganho derivativo do PID.
+    int16_t limitePID;                ///< Limite absoluto da correcao.
+    CalibracaoMotor motorEsquerdo;    ///< Ajustes do motor esquerdo.
+    CalibracaoMotor motorDireito;     ///< Ajustes do motor direito.
 
+    /** @return Configuracao recomendada para a PCB ESP_FB V1. */
     static RoboConfig padrao()
     {
         RoboConfig c{};

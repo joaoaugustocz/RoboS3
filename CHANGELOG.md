@@ -1,5 +1,12 @@
 # Changelog
 
+## Não publicado
+
+- documentação Doxygen padronizada em toda a biblioteca, incluindo módulos,
+  configurações, tipos, constantes, parâmetros, retornos e unidades;
+- README reorganizado com instalação pela Arduino IDE, sumário, convenções da
+  referência, unidades dos tipos retornados e orientação de manutenção.
+
 ## 0.2.0
 
 - diagnóstico automático de módulos com falha durante `begin()`;

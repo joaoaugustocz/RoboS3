@@ -44,60 +44,96 @@ class RoboS3
 
     /**
      * @brief Substitui os oito GPIOs e o emissor do QTR.
-     * @param s1 GPIO do sensor mais a esquerda; s2...s8 seguem a ordem fisica.
+     * @param s1 GPIO do primeiro sensor, o mais a esquerda.
+     * @param s2 GPIO do segundo sensor.
+     * @param s3 GPIO do terceiro sensor.
+     * @param s4 GPIO do quarto sensor.
+     * @param s5 GPIO do quinto sensor.
+     * @param s6 GPIO do sexto sensor.
+     * @param s7 GPIO do setimo sensor.
+     * @param s8 GPIO do oitavo sensor, o mais a direita.
      * @param emitter GPIO do emissor, ou 0xFF quando nao houver controle.
      * @note Chame antes de begin().
      */
     void definePinsQTR(uint8_t s1, uint8_t s2, uint8_t s3, uint8_t s4, uint8_t s5, uint8_t s6,
                        uint8_t s7, uint8_t s8, uint8_t emitter = 0xFF);
 
-    /** @brief Seleciona QTR_8A ou QTR_8RC antes de begin(). */
+    /**
+     * @brief Seleciona a interface eletrica do conjunto QTR antes de begin().
+     * @param type QTR_8A para sensores analogicos ou QTR_8RC para sensores RC.
+     */
     void setTipoQTR(TipoQTR type)
     {
         config_.board.qtrType = type;
     }
 
-    /** @brief Seleciona se a pista possui linha preta ou linha branca. */
+    /**
+     * @brief Seleciona a polaridade visual da pista.
+     * @param type LINHA_PRETA ou LINHA_BRANCA.
+     */
     void setTipoLinha(TipoLinha type);
 
-    /** @brief Substitui a pinagem completa da ponte H antes de begin(). */
+    /**
+     * @brief Substitui a pinagem completa da ponte H antes de begin().
+     * @param ena Enable/PWM esquerdo. @param in1 Direcao esquerda 1.
+     * @param in2 Direcao esquerda 2. @param in3 Direcao direita 1.
+     * @param in4 Direcao direita 2. @param enb Enable/PWM direito.
+     */
     void definePinsPonteH(uint8_t ena, uint8_t in1, uint8_t in2, uint8_t in3, uint8_t in4,
                           uint8_t enb);
 
-    /** @brief Substitui os GPIOs TRIGGER e ECHO do ultrassom antes de begin(). */
+    /**
+     * @brief Substitui os GPIOs TRIGGER e ECHO do ultrassom antes de begin().
+     * @param trigger GPIO do sinal TRIG. @param echo GPIO do sinal ECHO.
+     */
     void definePinsUltrassom(uint8_t trigger, uint8_t echo);
 
-    /** @brief Configura SDA, SCL e frequencia do barramento I2C0 antes de begin(). */
+    /**
+     * @brief Configura o barramento I2C0 antes de begin().
+     * @param sda GPIO de dados. @param scl GPIO de clock.
+     * @param frequency Frequencia do barramento em hertz.
+     */
     void definePinsI2C0(uint8_t sda, uint8_t scl, uint32_t frequency = 400000);
 
-    /** @brief Configura SDA, SCL e frequencia do barramento I2C1 antes de begin(). */
+    /**
+     * @brief Configura o barramento I2C1 antes de begin().
+     * @param sda GPIO de dados. @param scl GPIO de clock.
+     * @param frequency Frequencia do barramento em hertz.
+     */
     void definePinsI2C1(uint8_t sda, uint8_t scl, uint32_t frequency = 400000);
 
-    /** @brief Define o endereco I2C da MPU6050, normalmente 0x68. */
+    /**
+     * @brief Define o endereco I2C da MPU6050 antes de begin().
+     * @param address Endereco de 7 bits, normalmente 0x68.
+     */
     void configurarIMU(uint8_t address)
     {
         config_.board.mpuAddress = address;
     }
 
-    /** @brief Comanda os dois motores com valores independentes de -100 a 100. */
+    /**
+     * @brief Comanda os dois motores independentemente.
+     * @param velocidadeEsquerda Comando esquerdo de -100 a 100.
+     * @param velocidadeDireita Comando direito de -100 a 100.
+     */
     void mover(int velocidadeEsquerda, int velocidadeDireita);
 
-    /** @brief Move os dois motores para frente com velocidade de 0 a 100. */
+    /** @brief Move para frente. @param velocidade Intensidade de 0 a 100. */
     void frente(int velocidade);
 
-    /** @brief Move os dois motores para tras com velocidade de 0 a 100. */
+    /** @brief Move para tras. @param velocidade Intensidade de 0 a 100. */
     void tras(int velocidade);
 
-    /** @brief Gira no proprio eixo para a esquerda. */
+    /** @brief Gira no proprio eixo para a esquerda. @param velocidade Intensidade de 0 a 100. */
     void girarEsquerda(int velocidade);
 
-    /** @brief Gira no proprio eixo para a direita. */
+    /** @brief Gira no proprio eixo para a direita. @param velocidade Intensidade de 0 a 100. */
     void girarDireita(int velocidade);
 
-    /** @brief Atualiza apenas o motor esquerdo e preserva o comando direito. */
+    /** @brief Atualiza apenas o motor esquerdo. @param velocidade Comando de -100 a 100. */
     void motorEsquerdo(int velocidade);
 
-    /** @brief Atualiza apenas o motor direito e preserva o comando esquerdo. */
+    /** @brief Atualiza apenas o motor direito. @param velocidade Comando de -100 a 100. */
     void motorDireito(int velocidade);
 
     /** @brief Para em modo livre, desligando os enables da ponte H. */
@@ -106,19 +142,31 @@ class RoboS3
     /** @brief Aplica frenagem ativa aos dois motores. */
     void frear();
 
-    /** @brief Inverte logicamente a polaridade do motor esquerdo. */
+    /** @brief Configura a inversao esquerda. @param invertido true para inverter. */
     void inverterMotorEsquerdo(bool invertido);
 
-    /** @brief Inverte logicamente a polaridade do motor direito. */
+    /** @brief Configura a inversao direita. @param invertido true para inverter. */
     void inverterMotorDireito(bool invertido);
 
-    /** @brief Configura a inversao dos dois motores em uma chamada. */
+    /**
+     * @brief Configura a inversao dos dois motores em uma chamada.
+     * @param esquerdo true para inverter o esquerdo.
+     * @param direito true para inverter o direito.
+     */
     void inverterMotores(bool esquerdo, bool direito);
 
-    /** @brief Aplica um fator multiplicador a um motor e sentido. */
+    /**
+     * @brief Aplica um fator multiplicador a um motor e sentido.
+     * @param motor MOTOR_ESQUERDO ou MOTOR_DIREITO.
+     * @param sentido FRENTE ou TRAS. @param fator Multiplicador; 1.0 e neutro.
+     */
     void configurarCompensacaoMotor(Motor motor, SentidoMotor sentido, float fator);
 
-    /** @brief Define o menor PWM capaz de movimentar um motor naquele sentido. */
+    /**
+     * @brief Define o menor comando capaz de movimentar um motor.
+     * @param motor MOTOR_ESQUERDO ou MOTOR_DIREITO.
+     * @param sentido FRENTE ou TRAS. @param minimo Valor de 0 a 100.
+     */
     void configurarMinimoMovimento(Motor motor, SentidoMotor sentido, uint8_t minimo);
 
     /**
@@ -153,10 +201,10 @@ class RoboS3
      */
     PadraoLinha lerPadraoLinha();
 
-    /** @brief Retorna a ultima LeituraLinha sem fazer nova aquisicao fisica. */
+    /** @return Referencia para a ultima LeituraLinha, sem nova aquisicao. */
     const LeituraLinha& ultimaLeituraLinha() const;
 
-    /** @brief Retorna os milissegundos desde a ultima linha detectada. */
+    /** @return Milissegundos desde a ultima linha detectada. */
     uint32_t tempoSemLinha() const;
 
     /**
@@ -169,10 +217,10 @@ class RoboS3
     /** @brief Apaga todos os casos registrados no historico de linha. */
     void limparHistoricoLinha();
 
-    /** @brief Retorna a capacidade configurada, de 0 a 32 casos. */
+    /** @return Capacidade configurada, de 0 a 32 casos. */
     uint8_t capacidadeHistoricoLinha() const;
 
-    /** @brief Retorna quantos casos validos existem atualmente no historico. */
+    /** @return Quantidade de casos validos atualmente no historico. */
     uint8_t quantidadeHistoricoLinha() const;
 
     /**
@@ -191,161 +239,217 @@ class RoboS3
      */
     uint8_t copiarHistoricoLinha(CasoLinha saida[], uint8_t maximo) const;
 
-    /** @brief Converte um PadraoLinha para texto P/B terminado em zero. */
+    /**
+     * @brief Converte um PadraoLinha para texto P/B terminado em zero.
+     * @param padrao Valor binario nomeado a converter.
+     * @param saida Buffer com pelo menos nove caracteres.
+     */
     static void padraoLinhaTexto(PadraoLinha padrao, char saida[9]);
 
-    /** @brief Calibra o QTR durante um intervalo bloqueante em milissegundos. */
+    /**
+     * @brief Calibra o QTR durante um intervalo bloqueante.
+     * @param durationMs Duracao da coleta em milissegundos.
+     */
     void calibrarLinha(uint32_t durationMs = 5000);
 
-    /** @brief Calibra o QTR por uma quantidade bloqueante de amostras. */
+    /** @brief Calibra o QTR de forma bloqueante. @param samples Quantidade de amostras. */
     void calibrarLinhaAmostras(uint16_t samples);
 
-    /** @brief Define o limiar binario dos valores calibrados, entre 0 e 1000. */
+    /** @brief Define o limiar binario. @param threshold Valor calibrado de 0 a 1000. */
     void configurarLimiarLinha(uint16_t threshold);
 
-    /** @brief Retorna posicao menos centro; o centro padrao e 3500. */
+    /**
+     * @brief Calcula o erro da ultima leitura de linha.
+     * @param center Posicao desejada; 3500 representa o centro geometrico.
+     * @return ultima posicao valida menos center.
+     */
     int16_t erroLinha(int16_t center = 3500) const;
 
-    /** @brief Configura os ganhos proporcional, integral e derivativo. */
+    /**
+     * @brief Configura os ganhos do seguidor de linha.
+     * @param kp Ganho proporcional. @param ki Ganho integral. @param kd Ganho derivativo.
+     */
     void configurarPID(float kp, float ki, float kd);
 
     /** @brief Limpa as memorias integral, derivativa e temporal do PID. */
     void resetPID();
 
-    /** @brief Calcula e limita a correcao PID para o erro informado. */
+    /** @brief Calcula a correcao PID. @param error Erro de entrada. @return Correcao limitada. */
     float calcularPID(float error);
 
-    /** @brief Le a linha, calcula PID e comanda os motores automaticamente. */
+    /**
+     * @brief Le a linha, calcula PID e comanda os motores automaticamente.
+     * @param velocidadeBase Velocidade nominal de 0 a 100.
+     * @note Para os motores quando a leitura nao possui posicao valida.
+     */
     void seguirLinha(int velocidadeBase);
 
-    /** @brief Mede a distancia do HC-SR04 em centimetros ou retorna NAN. */
+    /** @return Distancia do HC-SR04 em centimetros ou NAN se a medida falhar. */
     float distanciaCM();
 
-    /** @brief Retorna true para uma medida valida menor ou igual ao limite. */
+    /**
+     * @brief Verifica a presenca de um obstaculo.
+     * @param maximumCm Distancia limite em centimetros.
+     * @return true para uma medida valida menor ou igual ao limite.
+     */
     bool temObstaculo(float maximumCm);
 
-    /** @brief Retorna RGB, HSV, HSL, dados crus e classificacao de um TCS34725. */
+    /**
+     * @brief Faz uma leitura completa de um TCS34725.
+     * @param sensor COR_ESQUERDA ou COR_DIREITA.
+     * @return RGB, HSV, HSL, canais crus, classificacao, validade e instante.
+     */
     LeituraCor lerDadosCor(SensorCor sensor);
 
-    /** @brief Retorna somente RGB normalizado na faixa de 0 a 255. */
+    /** @brief Le um sensor. @param sensor Lado desejado. @return RGB normalizado em 0...255. */
     RGB lerRGB(SensorCor sensor);
 
-    /** @brief Retorna HSV com H em graus e S/V em porcentagem. */
+    /** @brief Le um sensor. @param sensor Lado desejado. @return HSV em graus e porcentagem. */
     HSV lerHSV(SensorCor sensor);
 
-    /** @brief Retorna HSL com H em graus e S/L em porcentagem. */
+    /** @brief Le um sensor. @param sensor Lado desejado. @return HSL em graus e porcentagem. */
     HSL lerHSL(SensorCor sensor);
 
-    /** @brief Classifica a leitura conforme as faixas configuradas. */
+    /**
+     * @brief Le e classifica um sensor.
+     * @param sensor COR_ESQUERDA ou COR_DIREITA.
+     * @return CorDetectada ou COR_DESCONHECIDA.
+     */
     CorDetectada lerCor(SensorCor sensor);
 
-    /** @brief Altera apenas os limites de hue de uma cor. */
+    /**
+     * @brief Altera apenas os limites de hue de uma cor.
+     * @param sensor Sensor a configurar. @param color Classe a configurar.
+     * @param hMin Menor hue em graus. @param hMax Maior hue em graus.
+     * @note hMin maior que hMax representa uma faixa que cruza 360 graus.
+     */
     void definirFaixaH(SensorCor sensor, CorDetectada color, float hMin, float hMax);
 
-    /** @brief Define manualmente todos os limites HSV usados na classificacao. */
+    /**
+     * @brief Define manualmente os limites HSV usados na classificacao.
+     * @param sensor Sensor a configurar. @param color Classe a configurar.
+     * @param hMin Hue minimo. @param hMax Hue maximo.
+     * @param sMin Saturacao minima. @param sMax Saturacao maxima.
+     * @param vMin Valor minimo. @param vMax Valor maximo.
+     */
     void definirFaixaHSV(SensorCor sensor, CorDetectada color, float hMin, float hMax, float sMin,
                          float sMax, float vMin, float vMax);
 
-    /** @brief Mede amostras e cria automaticamente uma faixa HSV para a cor. */
+    /**
+     * @brief Mede amostras e cria automaticamente uma faixa HSV.
+     * @param sensor Sensor usado na coleta. @param color Classe associada.
+     * @param samples Quantidade de amostras; padrao 30.
+     */
     void calibrarCor(SensorCor sensor, CorDetectada color, uint16_t samples = 30);
 
-    /** @brief Configura o ganho 1X, 4X, 16X ou 60X do TCS34725. */
+    /** @brief Configura o ganho de um TCS34725. @param sensor Lado. @param gain Ganho desejado. */
     void setGanhoCor(SensorCor sensor, GanhoCor gain);
 
-    /** @brief Configura o tempo de integracao do TCS34725. */
+    /** @brief Configura a integracao de um TCS34725. @param sensor Lado. @param time Tempo desejado. */
     void setTempoIntegracaoCor(SensorCor sensor, TempoIntegracaoCor time);
 
-    /** @brief Atualiza e retorna aceleracao, giro, temperatura e angulos da IMU. */
+    /** @return Nova leitura com aceleracao, giro, temperatura e angulos. */
     LeituraIMU lerIMU();
 
     /** @brief Atualiza somente a estimativa interna da IMU. */
     void atualizarIMU();
 
-    /** @brief Retorna a inclinacao lateral em graus. */
+    /** @return Inclinacao lateral da ultima leitura em graus. */
     float roll() const;
 
-    /** @brief Retorna a inclinacao longitudinal em graus. */
+    /** @return Inclinacao longitudinal da ultima leitura em graus. */
     float pitch() const;
 
-    /** @brief Retorna o yaw/Z relativo em graus; nao e uma bussola. */
+    /** @return Yaw/Z relativo em graus; nao representa rumo de bussola. */
     float anguloZ() const;
 
     /** @brief Define o angulo Z atual como zero relativo. */
     void zerarAnguloZ();
 
-    /** @brief Testa se abs(roll) ou abs(pitch) atingiu o limite. */
+    /**
+     * @brief Testa a inclinacao atual.
+     * @param graus Limite absoluto em graus.
+     * @return true se abs(roll) ou abs(pitch) atingiu o limite.
+     */
     bool estaInclinado(float graus) const;
 
-    /** @brief Calcula offsets da IMU com o robo imovel durante um tempo bloqueante. */
+    /**
+     * @brief Calcula offsets da IMU com o robo imovel durante um tempo bloqueante.
+     * @param durationMs Duracao da coleta em milissegundos.
+     */
     void calibrarIMU(uint32_t durationMs = 3000);
 
-    /** @brief Salva calibracoes de linha, motores, cores e IMU no NVS. */
+    /** @return true quando as calibracoes foram gravadas e confirmadas no NVS. */
     bool salvarCalibracao();
 
-    /** @brief Carrega e aplica a calibracao salva; false se ela nao for valida. */
+    /** @return true quando uma calibracao valida foi carregada e aplicada. */
     bool carregarCalibracao();
 
-    /** @brief Apaga a calibracao persistida no NVS. */
+    /** @return true quando a calibracao persistida foi apagada do NVS. */
     bool apagarCalibracao();
 
-    /** @brief Informa se o modulo QTR iniciou corretamente. */
+    /** @return true quando o modulo QTR iniciou corretamente. */
     bool linhaDisponivel() const
     {
         return status_.linha;
     }
 
-    /** @brief Informa se o modulo ultrassonico foi configurado. */
+    /** @return true quando o modulo ultrassonico foi configurado. */
     bool ultrassomDisponivel() const
     {
         return status_.ultrassom;
     }
 
-    /** @brief Informa se o TCS34725 selecionado respondeu ao begin(). */
+    /**
+     * @brief Consulta a disponibilidade de um TCS34725.
+     * @param sensor COR_ESQUERDA ou COR_DIREITA.
+     * @return true quando o sensor selecionado respondeu ao begin().
+     */
     bool corDisponivel(SensorCor sensor) const;
 
-    /** @brief Informa se a MPU6050 respondeu ao begin(). */
+    /** @return true quando a MPU6050 respondeu ao begin(). */
     bool imuDisponivel() const
     {
         return status_.imu;
     }
 
-    /** @brief Retorna as flags individuais da ultima inicializacao. */
+    /** @return Referencia para as flags individuais da ultima inicializacao. */
     const StatusRobo& status() const
     {
         return status_;
     }
 
-    /** @brief Informa se todos os modulos previstos responderam. */
+    /** @return true quando todos os modulos previstos responderam. */
     bool inicializacaoCompleta() const
     {
         return status_.inicializacaoCompleta();
     }
 
-    /** @brief Informa se motores e QTR estao disponiveis. */
+    /** @return true quando motores e QTR estao disponiveis. */
     bool operacaoBasicaDisponivel() const
     {
         return status_.operacaoBasicaDisponivel();
     }
 
-    /** @brief Imprime o estado de todos os modulos e da calibracao. */
+    /** @brief Imprime o estado dos modulos. @param out Destino Print; Serial por padrao. */
     void printStatus(Print& out = Serial) const;
 
-    /** @brief Imprime apenas os modulos que falharam durante begin(). */
+    /** @brief Imprime as falhas do begin(). @param out Destino Print; Serial por padrao. */
     void printErrosInicializacao(Print& out = Serial) const;
 
-    /** @brief Imprime bruto, calibrado, mascara, posicao e tempo da linha. */
+    /** @brief Imprime a ultima linha. @param out Destino Print; Serial por padrao. */
     void printLinha(Print& out = Serial) const;
 
-    /** @brief Le e imprime os dois sensores de cor. */
+    /** @brief Le e imprime os dois sensores de cor. @param out Destino Print. */
     void printCores(Print& out = Serial);
 
-    /** @brief Imprime a ultima leitura mantida pela IMU. */
+    /** @brief Imprime a ultima leitura da IMU. @param out Destino Print. */
     void printIMU(Print& out = Serial) const;
 
-    /** @brief Imprime comandos e calibracoes atuais dos motores. */
+    /** @brief Imprime comandos e calibracoes dos motores. @param out Destino Print. */
     void printMotores(Print& out = Serial) const;
 
-    /** @brief Seleciona DEBUG_OFF, DEBUG_ERROR, DEBUG_INFO ou DEBUG_VERBOSE. */
+    /** @brief Define o nivel de diagnostico. @param level Um valor DebugLevel. */
     void setDebugLevel(DebugLevel level)
     {
         debug_.setLevel(level);
