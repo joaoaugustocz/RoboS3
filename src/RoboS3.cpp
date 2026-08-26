@@ -18,7 +18,7 @@ using namespace robos3;
 
 RoboS3::RoboS3()
     : config_(RoboConfig::padrao()), status_{}, motors_{}, line_{}, pid_{},
-      ultrasonic_{}, colors_{}, imu_{}, storage_{}, debug_{}, begun_(false),
+      ultrasonic_{}, vl53_{}, colors_{}, imu_{}, storage_{}, debug_{}, begun_(false),
       anguloZInvertido_(false)
 #ifdef ROBOS3_CALIBRATION_SERIAL
       ,
@@ -47,19 +47,64 @@ bool RoboS3::begin(Print& diagnostico)
         line_.begin(config_.board.qtrPins, config_.board.qtrType, config_.board.qtrEmitterPin);
     line_.setTypeLine(config_.tipoLinha);
     line_.setThreshold(config_.limiarLinha);
-    status_.ultrassom =
-        ultrasonic_.begin(config_.board.ultrasonicTrig, config_.board.ultrasonicEcho);
+    status_.ultrassom1Habilitado = config_.board.ultrassom[0].habilitado;
+    status_.ultrassom2Habilitado = config_.board.ultrassom[1].habilitado;
+    status_.corEsquerdaHabilitada = config_.board.corEsquerdaHabilitada;
+    status_.corDireitaHabilitada = config_.board.corDireitaHabilitada;
+    status_.vl53_1Habilitado = config_.board.vl53[0].habilitado;
+    status_.vl53_2Habilitado = config_.board.vl53[1].habilitado;
+    if (status_.ultrassom1Habilitado)
+    {
+        const auto& ultra = config_.board.ultrassom[0];
+        status_.ultrassom = ultrasonic_[0].begin(ultra.trigger, ultra.echo, ultra.maximoCm);
+    }
+    if (status_.ultrassom2Habilitado)
+    {
+        const auto& ultra = config_.board.ultrassom[1];
+        status_.ultrassom2 = ultrasonic_[1].begin(ultra.trigger, ultra.echo, ultra.maximoCm);
+    }
     status_.i2c0 =
         Wire.begin(config_.board.i2c0.sda, config_.board.i2c0.scl, config_.board.i2c0.frequency);
     status_.i2c1 =
         Wire1.begin(config_.board.i2c1.sda, config_.board.i2c1.scl, config_.board.i2c1.frequency);
-    const bool coresMesmoBarramento = config_.board.corEsquerdaI2C == config_.board.corDireitaI2C;
-    if (!coresMesmoBarramento)
+    auto dispositivosNoEndereco29 = [this](BarramentoI2C barramento)
+    {
+        uint8_t quantidade = 0;
+        quantidade += config_.board.corEsquerdaHabilitada &&
+                      config_.board.corEsquerdaI2C == barramento;
+        quantidade += config_.board.corDireitaHabilitada &&
+                      config_.board.corDireitaI2C == barramento;
+        quantidade += config_.board.vl53[0].habilitado &&
+                      config_.board.vl53[0].barramento == barramento;
+        quantidade += config_.board.vl53[1].habilitado &&
+                      config_.board.vl53[1].barramento == barramento;
+        return quantidade;
+    };
+    if (config_.board.corEsquerdaHabilitada &&
+        dispositivosNoEndereco29(config_.board.corEsquerdaI2C) == 1)
     {
         status_.corEsquerda = i2cDisponivel(config_.board.corEsquerdaI2C) &&
                               colors_[0].begin(wire(config_.board.corEsquerdaI2C));
+    }
+    if (config_.board.corDireitaHabilitada &&
+        dispositivosNoEndereco29(config_.board.corDireitaI2C) == 1)
+    {
         status_.corDireita = i2cDisponivel(config_.board.corDireitaI2C) &&
                             colors_[1].begin(wire(config_.board.corDireitaI2C));
+    }
+    if (config_.board.vl53[0].habilitado &&
+        dispositivosNoEndereco29(config_.board.vl53[0].barramento) == 1)
+    {
+        const auto& tof = config_.board.vl53[0];
+        status_.vl53_1 = i2cDisponivel(tof.barramento) &&
+                         vl53_[0].begin(wire(tof.barramento), tof.timeoutMs);
+    }
+    if (config_.board.vl53[1].habilitado &&
+        dispositivosNoEndereco29(config_.board.vl53[1].barramento) == 1)
+    {
+        const auto& tof = config_.board.vl53[1];
+        status_.vl53_2 = i2cDisponivel(tof.barramento) &&
+                         vl53_[1].begin(wire(tof.barramento), tof.timeoutMs);
     }
     status_.imu = i2cDisponivel(config_.board.imuI2C) &&
                   imu_.begin(wire(config_.board.imuI2C), config_.board.mpuAddress);
@@ -139,8 +184,33 @@ void RoboS3::definePinsPonteH(uint8_t ena, uint8_t in1, uint8_t in2, uint8_t in3
 }
 void RoboS3::definePinsUltrassom(uint8_t trigger, uint8_t echo)
 {
-    config_.board.ultrasonicTrig = trigger;
-    config_.board.ultrasonicEcho = echo;
+    configurarUltrassom(DISTANCIA_ULTRASSOM_1, trigger, echo);
+}
+bool RoboS3::configurarUltrassom(SensorDistancia sensor, uint8_t trigger, uint8_t echo,
+                                 uint16_t maximoCm)
+{
+    if (sensor != DISTANCIA_ULTRASSOM_1 && sensor != DISTANCIA_ULTRASSOM_2)
+    {
+        return false;
+    }
+    if (trigger == echo)
+    {
+        return false;
+    }
+    const uint8_t index = sensor == DISTANCIA_ULTRASSOM_2 ? 1 : 0;
+    const uint16_t alcanceSeguro = maximoCm == 0 ? static_cast<uint16_t>(1) : maximoCm;
+    config_.board.ultrassom[index] = {config_.board.ultrassom[index].id, true, trigger, echo,
+                                      alcanceSeguro};
+    return true;
+}
+bool RoboS3::habilitarUltrassom(SensorDistancia sensor, bool habilitado)
+{
+    if (sensor != DISTANCIA_ULTRASSOM_1 && sensor != DISTANCIA_ULTRASSOM_2)
+    {
+        return false;
+    }
+    config_.board.ultrassom[sensor == DISTANCIA_ULTRASSOM_2 ? 1 : 0].habilitado = habilitado;
+    return true;
 }
 void RoboS3::definePinsI2C0(uint8_t sda, uint8_t scl, uint32_t frequency)
 {
@@ -160,6 +230,132 @@ void RoboS3::definirBarramentoCor(SensorCor sensor, BarramentoI2C barramento)
     {
         config_.board.corEsquerdaI2C = barramento;
     }
+}
+void RoboS3::habilitarSensorCor(SensorCor sensor, bool habilitado)
+{
+    if (sensor == COR_DIREITA)
+    {
+        config_.board.corDireitaHabilitada = habilitado;
+    }
+    else
+    {
+        config_.board.corEsquerdaHabilitada = habilitado;
+    }
+}
+bool RoboS3::configurarVL53L0X(SensorDistancia sensor, BarramentoI2C barramento,
+                               uint16_t timeoutMs)
+{
+    if (sensor != DISTANCIA_VL53_1 && sensor != DISTANCIA_VL53_2)
+    {
+        return false;
+    }
+    const uint8_t index = sensor == DISTANCIA_VL53_2 ? 1 : 0;
+    const uint16_t timeoutSeguro = timeoutMs == 0 ? static_cast<uint16_t>(1) : timeoutMs;
+    config_.board.vl53[index] = {config_.board.vl53[index].id, true, barramento, timeoutSeguro};
+    return true;
+}
+bool RoboS3::desabilitarVL53L0X(SensorDistancia sensor)
+{
+    if (sensor != DISTANCIA_VL53_1 && sensor != DISTANCIA_VL53_2)
+    {
+        return false;
+    }
+    config_.board.vl53[sensor == DISTANCIA_VL53_2 ? 1 : 0].habilitado = false;
+    return true;
+}
+bool RoboS3::adicionarSensorDistancia(uint8_t id, TipoSensorDistancia tipo, uint8_t trigger,
+                                      uint8_t echo, uint16_t maximoCm)
+{
+    if (tipo != SENSOR_ULTRASSONICO || id == DISTANCIA_DESCONHECIDA || trigger == echo)
+    {
+        return false;
+    }
+
+    int8_t slot = -1;
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        if (config_.board.ultrassom[i].trigger == trigger && config_.board.ultrassom[i].echo == echo)
+        {
+            slot = i;
+            break;
+        }
+        if (slot < 0 && !config_.board.ultrassom[i].habilitado)
+        {
+            slot = i;
+        }
+    }
+    if (slot < 0)
+    {
+        return false;
+    }
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        if (i != slot && config_.board.ultrassom[i].habilitado &&
+            config_.board.ultrassom[i].id == id)
+        {
+            return false;
+        }
+        if (config_.board.vl53[i].habilitado && config_.board.vl53[i].id == id)
+        {
+            return false;
+        }
+    }
+    const uint16_t alcanceSeguro = maximoCm == 0 ? static_cast<uint16_t>(1) : maximoCm;
+    config_.board.ultrassom[slot] = {id, true, trigger, echo, alcanceSeguro};
+    return true;
+}
+bool RoboS3::adicionarSensorDistancia(uint8_t id, TipoSensorDistancia tipo,
+                                      BarramentoI2C barramento, uint16_t timeoutMs)
+{
+    if (tipo != SENSOR_TOF_VL53L0X || id == DISTANCIA_DESCONHECIDA)
+    {
+        return false;
+    }
+
+    int8_t slot = -1;
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        if (!config_.board.vl53[i].habilitado)
+        {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0)
+    {
+        return false;
+    }
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        if (config_.board.ultrassom[i].habilitado && config_.board.ultrassom[i].id == id)
+        {
+            return false;
+        }
+        if (config_.board.vl53[i].habilitado && config_.board.vl53[i].id == id)
+        {
+            return false;
+        }
+    }
+    const uint16_t timeoutSeguro = timeoutMs == 0 ? static_cast<uint16_t>(1) : timeoutMs;
+    config_.board.vl53[slot] = {id, true, barramento, timeoutSeguro};
+    return true;
+}
+bool RoboS3::removerSensorDistancia(uint8_t id)
+{
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        if (config_.board.ultrassom[i].habilitado && config_.board.ultrassom[i].id == id)
+        {
+            config_.board.ultrassom[i].habilitado = false;
+            return true;
+        }
+        if (config_.board.vl53[i].habilitado && config_.board.vl53[i].id == id)
+        {
+            config_.board.vl53[i].habilitado = false;
+            return true;
+        }
+    }
+    return false;
 }
 void RoboS3::definirBarramentoIMU(BarramentoI2C barramento)
 {
@@ -424,11 +620,110 @@ void RoboS3::seguirLinha(int base)
 
 float RoboS3::distanciaCM()
 {
-    return ultrasonic_.distanceCm();
+    return distanciaCM(DISTANCIA_ULTRASSOM_1);
+}
+LeituraDistancia RoboS3::lerDistancia(SensorDistancia sensor)
+{
+    LeituraDistancia leitura{};
+    if (sensor == DISTANCIA_ULTRASSOM_1 || sensor == DISTANCIA_ULTRASSOM_2)
+    {
+        leitura.id = config_.board.ultrassom[sensor == DISTANCIA_ULTRASSOM_2 ? 1 : 0].id;
+    }
+    else if (sensor == DISTANCIA_VL53_1 || sensor == DISTANCIA_VL53_2)
+    {
+        leitura.id = config_.board.vl53[sensor == DISTANCIA_VL53_2 ? 1 : 0].id;
+    }
+    leitura.sensor = sensor;
+    if (sensor == DISTANCIA_VL53_1 || sensor == DISTANCIA_VL53_2)
+    {
+        leitura.tipo = SENSOR_TOF_VL53L0X;
+    }
+    else if (sensor == DISTANCIA_ULTRASSOM_1 || sensor == DISTANCIA_ULTRASSOM_2)
+    {
+        leitura.tipo = SENSOR_ULTRASSONICO;
+    }
+    else
+    {
+        leitura.tipo = SENSOR_DISTANCIA_DESCONHECIDO;
+    }
+    leitura.centimetros = NAN;
+    leitura.timestampMs = millis();
+
+    if (sensor == DISTANCIA_ULTRASSOM_1 || sensor == DISTANCIA_ULTRASSOM_2)
+    {
+        const uint8_t index = sensor == DISTANCIA_ULTRASSOM_2 ? 1 : 0;
+        if (!distanciaDisponivel(sensor))
+        {
+            return leitura;
+        }
+        leitura.centimetros = ultrasonic_[index].distanceCm();
+        leitura.valida = isfinite(leitura.centimetros);
+        if (leitura.valida)
+        {
+            const float mm = leitura.centimetros * 10.0f;
+            leitura.milimetros = mm >= UINT16_MAX ? UINT16_MAX : static_cast<uint16_t>(mm + 0.5f);
+        }
+        return leitura;
+    }
+
+    if (sensor == DISTANCIA_VL53_1 || sensor == DISTANCIA_VL53_2)
+    {
+        const uint8_t index = sensor == DISTANCIA_VL53_2 ? 1 : 0;
+        if (!distanciaDisponivel(sensor))
+        {
+            return leitura;
+        }
+        leitura.milimetros = vl53_[index].distanceMm(leitura.timeout);
+        leitura.valida = !leitura.timeout && leitura.milimetros > 0;
+        if (leitura.valida)
+        {
+            leitura.centimetros = leitura.milimetros / 10.0f;
+        }
+    }
+    return leitura;
+}
+LeituraDistancia RoboS3::lerDistancia(uint8_t id)
+{
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        if (config_.board.ultrassom[i].habilitado && config_.board.ultrassom[i].id == id)
+        {
+            return lerDistancia(i == 0 ? DISTANCIA_ULTRASSOM_1 : DISTANCIA_ULTRASSOM_2);
+        }
+        if (config_.board.vl53[i].habilitado && config_.board.vl53[i].id == id)
+        {
+            return lerDistancia(i == 0 ? DISTANCIA_VL53_1 : DISTANCIA_VL53_2);
+        }
+    }
+    LeituraDistancia leitura{};
+    leitura.id = id;
+    leitura.sensor = DISTANCIA_DESCONHECIDA;
+    leitura.tipo = SENSOR_DISTANCIA_DESCONHECIDO;
+    leitura.centimetros = NAN;
+    leitura.timestampMs = millis();
+    return leitura;
+}
+float RoboS3::distanciaCM(SensorDistancia sensor)
+{
+    return lerDistancia(sensor).centimetros;
+}
+float RoboS3::distanciaCM(uint8_t id)
+{
+    return lerDistancia(id).centimetros;
 }
 bool RoboS3::temObstaculo(float cm)
 {
-    return ultrasonic_.hasObstacle(cm);
+    return temObstaculo(DISTANCIA_ULTRASSOM_1, cm);
+}
+bool RoboS3::temObstaculo(SensorDistancia sensor, float cm)
+{
+    const LeituraDistancia leitura = lerDistancia(sensor);
+    return leitura.valida && leitura.centimetros <= cm;
+}
+bool RoboS3::temObstaculo(uint8_t id, float cm)
+{
+    const LeituraDistancia leitura = lerDistancia(id);
+    return leitura.valida && leitura.centimetros <= cm;
 }
 ColorSensor& RoboS3::color(SensorCor s)
 {
@@ -624,18 +919,69 @@ bool RoboS3::corDisponivel(SensorCor s) const
 void RoboS3::printStatus(Print& out) const
 {
     out.println(F("[RoboS3] Status"));
-    const char* names[] = {"Motores",      "QTR",         "Ultrassom", "I2C0",
-                           "I2C1",         "TCS esquerdo", "TCS direito", "MPU6050"};
-    const bool values[] = {status_.motores,      status_.linha,       status_.ultrassom,
-                           status_.i2c0,         status_.i2c1,        status_.corEsquerda,
-                           status_.corDireita,   status_.imu};
-    for (uint8_t i = 0; i < 8; ++i)
+    const char* names[] = {"Motores", "QTR", "ULTRA1", "ULTRA2", "I2C0", "I2C1",
+                           "TCS esquerdo", "TCS direito", "MPU6050", "VL53 #1", "VL53 #2"};
+    const bool enabled[] = {true, true, status_.ultrassom1Habilitado,
+                            status_.ultrassom2Habilitado, true, true,
+                            status_.corEsquerdaHabilitada, status_.corDireitaHabilitada,
+                            true, status_.vl53_1Habilitado, status_.vl53_2Habilitado};
+    const bool values[] = {status_.motores, status_.linha, status_.ultrassom,
+                           status_.ultrassom2, status_.i2c0, status_.i2c1,
+                           status_.corEsquerda, status_.corDireita, status_.imu,
+                           status_.vl53_1, status_.vl53_2};
+    for (uint8_t i = 0; i < 11; ++i)
     {
-        out.print(values[i] ? F("[OK] ") : F("[ERRO] "));
+        out.print(!enabled[i] ? F("[DESATIVADO] ") : values[i] ? F("[OK] ") : F("[ERRO] "));
         out.println(names[i]);
     }
+    out.print(F("IDs distancia: ULTRA1="));
+    out.print(config_.board.ultrassom[0].id);
+    out.print(F(", ULTRA2="));
+    out.print(config_.board.ultrassom[1].id);
+    if (status_.vl53_1Habilitado)
+    {
+        out.print(F(", VL53#1="));
+        out.print(config_.board.vl53[0].id);
+    }
+    if (status_.vl53_2Habilitado)
+    {
+        out.print(F(", VL53#2="));
+        out.print(config_.board.vl53[1].id);
+    }
+    out.println();
     out.print(status_.calibracaoCarregada ? F("[OK] ") : F("[PADRAO] "));
     out.println(F("Calibracao"));
+}
+bool RoboS3::distanciaDisponivel(SensorDistancia sensor) const
+{
+    switch (sensor)
+    {
+        case DISTANCIA_ULTRASSOM_1:
+            return status_.ultrassom;
+        case DISTANCIA_ULTRASSOM_2:
+            return status_.ultrassom2;
+        case DISTANCIA_VL53_1:
+            return status_.vl53_1;
+        case DISTANCIA_VL53_2:
+            return status_.vl53_2;
+        default:
+            return false;
+    }
+}
+bool RoboS3::distanciaDisponivel(uint8_t id) const
+{
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        if (config_.board.ultrassom[i].habilitado && config_.board.ultrassom[i].id == id)
+        {
+            return i == 0 ? status_.ultrassom : status_.ultrassom2;
+        }
+        if (config_.board.vl53[i].habilitado && config_.board.vl53[i].id == id)
+        {
+            return i == 0 ? status_.vl53_1 : status_.vl53_2;
+        }
+    }
+    return false;
 }
 
 void RoboS3::printErrosInicializacao(Print& out) const
@@ -655,9 +1001,13 @@ void RoboS3::printErrosInicializacao(Print& out) const
     {
         out.println(F("- QTR: falha ao configurar os sensores de linha."));
     }
-    if (!status_.ultrassom)
+    if (status_.ultrassom1Habilitado && !status_.ultrassom)
     {
-        out.println(F("- Ultrassom: falha ao configurar TRIGGER/ECHO."));
+        out.println(F("- ULTRA1: falha ao configurar TRIGGER/ECHO."));
+    }
+    if (status_.ultrassom2Habilitado && !status_.ultrassom2)
+    {
+        out.println(F("- ULTRA2: falha ao configurar TRIGGER/ECHO."));
     }
     if (!status_.i2c0)
     {
@@ -667,25 +1017,52 @@ void RoboS3::printErrosInicializacao(Print& out) const
     {
         out.println(F("- I2C1: falha ao iniciar SDA/SCL do barramento 1."));
     }
-    if (!status_.corEsquerda)
+    auto quantidadeEndereco29 = [this](BarramentoI2C barramento)
     {
-        if (config_.board.corEsquerdaI2C == config_.board.corDireitaI2C)
-        {
-            out.println(F("- Cores: dois TCS34725 (0x29) nao podem usar o mesmo I2C."));
-        }
-        else
-        {
-            out.print(F("- Cor esquerda: TCS34725 nao respondeu no "));
-            out.println(config_.board.corEsquerdaI2C == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
-        }
+        uint8_t quantidade = 0;
+        quantidade += config_.board.corEsquerdaHabilitada &&
+                      config_.board.corEsquerdaI2C == barramento;
+        quantidade += config_.board.corDireitaHabilitada &&
+                      config_.board.corDireitaI2C == barramento;
+        quantidade += config_.board.vl53[0].habilitado &&
+                      config_.board.vl53[0].barramento == barramento;
+        quantidade += config_.board.vl53[1].habilitado &&
+                      config_.board.vl53[1].barramento == barramento;
+        return quantidade;
+    };
+    const bool conflitoI2C0 = quantidadeEndereco29(BARRAMENTO_I2C0) > 1;
+    const bool conflitoI2C1 = quantidadeEndereco29(BARRAMENTO_I2C1) > 1;
+    if (conflitoI2C0)
+    {
+        out.println(F("- I2C0: mais de um TCS34725/VL53L0X usa o endereco 0x29."));
     }
-    if (!status_.corDireita)
+    if (conflitoI2C1)
     {
-        if (config_.board.corEsquerdaI2C != config_.board.corDireitaI2C)
-        {
-            out.print(F("- Cor direita: TCS34725 nao respondeu no "));
-            out.println(config_.board.corDireitaI2C == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
-        }
+        out.println(F("- I2C1: mais de um TCS34725/VL53L0X usa o endereco 0x29."));
+    }
+    if (status_.corEsquerdaHabilitada && !status_.corEsquerda &&
+        !(config_.board.corEsquerdaI2C == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
+    {
+        out.print(F("- Cor esquerda: TCS34725 nao respondeu no "));
+        out.println(config_.board.corEsquerdaI2C == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
+    }
+    if (status_.corDireitaHabilitada && !status_.corDireita &&
+        !(config_.board.corDireitaI2C == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
+    {
+        out.print(F("- Cor direita: TCS34725 nao respondeu no "));
+        out.println(config_.board.corDireitaI2C == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
+    }
+    if (status_.vl53_1Habilitado && !status_.vl53_1 &&
+        !(config_.board.vl53[0].barramento == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
+    {
+        out.print(F("- VL53 #1: sensor nao respondeu no "));
+        out.println(config_.board.vl53[0].barramento == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
+    }
+    if (status_.vl53_2Habilitado && !status_.vl53_2 &&
+        !(config_.board.vl53[1].barramento == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
+    {
+        out.print(F("- VL53 #2: sensor nao respondeu no "));
+        out.println(config_.board.vl53[1].barramento == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
     }
     if (!status_.imu)
     {

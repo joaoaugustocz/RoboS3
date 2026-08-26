@@ -2,7 +2,7 @@
 
 Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**, baseada no **ESP32-S3-N8R2**. A API começa simples (`frente`, `parar`, `seguirLinha`) e preserva acesso a valores brutos, calibração, máscara, PID, RGB/HSV/HSL e IMU para o aluno evoluir sem trocar de biblioteca.
 
-**Versão estável:** 0.3.0 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
+**Versão estável:** 0.4.0 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
 
 ## Conteúdo
 
@@ -10,13 +10,13 @@ Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**
 - [Instalação](#instalação)
 - [Primeiro programa](#primeiro-programa)
 - [Motores, linha e PID](#motores-e-l298n)
-- [Ultrassom, cores e IMU](#hc-sr04)
+- [Sensores de distância, cores e IMU](#sensores-de-distância)
 - [Calibração e debug](#persistência)
 - [Referência completa da API](#referência-completa-da-api)
 - [Exemplos](#exemplos-incluídos)
 - [Limites de validação](#limites-de-validação)
 
-> Estado do hardware: a pinagem de QTR e ponte H foi revisada conforme a configuração informada para a placa. Ainda há colisões nos valores provisórios de I2C0 e ultrassom, detalhadas abaixo; eles precisam ser corrigidos com a pinagem elétrica confirmada antes do uso simultâneo.
+> Estado do hardware: QTR, ponte H e os dois conectores ultrassônicos foram revisados conforme a configuração informada para a placa. A pinagem provisória do I2C0 ainda colide com QTR e ULTRA2, conforme detalhado abaixo.
 
 ## Hardware e pinagem
 
@@ -25,17 +25,19 @@ Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**
 | QTR S1…S8 | 1, 2, 3, 5, 6, 7, 8, 9 | revisão informada; S1 é o bit 7 e S8 é o bit 0 |
 | Tipo QTR | QTR-8A (analógico) | oito GPIO ADC; não há temporização RC/emitter visível |
 | Emitter QTR | não conectado | nenhuma rede CTRL/LEDON nas imagens |
-| ULTRA1 TRIG/ECHO | 9 / 46 | provisório; TRIG conflita com QTR S8 |
-| I2C0 SDA/SCL | 1 / 42 | provisório; SDA conflita com QTR S1 |
+| ULTRA1 TRIG/ECHO | 17 / 18 | pinagem informada |
+| ULTRA2 TRIG/ECHO | 16 / 42 | pinagem informada |
+| I2C0 SDA/SCL | 1 / 42 | provisório; SDA conflita com QTR S1 e SCL com ECHO do ULTRA2 |
 | I2C1 SDA/SCL | 41 / 40 | sem colisão conhecida nesta revisão |
 | TCS esquerdo | I2C0, endereço 0x29 | padrão configurável antes de `begin()` |
 | TCS direito | I2C1, endereço 0x29 | padrão configurável antes de `begin()` |
+| VL53L0X #1/#2 | I2C configurável, endereço inicial 0x29 | opcionais; desativados por padrão |
 | MPU6050 | I2C0, endereço 0x68 | padrão configurável; pode compartilhar I2C0 ou I2C1 com um TCS |
 | INT MPU6050 | não conectado/comprovado | não aparece nas capturas |
 | L298N ENA/IN1/IN2 | 14 / 15 / 11 | revisão informada da ponte H |
 | L298N ENB/IN3/IN4 | 21 / 12 / 13 | revisão informada da ponte H |
 
-**Colisões a corrigir:** um GPIO só pode exercer uma função elétrica por vez. Portanto, com QTR em `1…9`, não use GPIO1 como SDA do I2C0 nem GPIO9 como TRIG do ultrassom. A biblioteca não tenta adivinhar a fiação: corrija `I2C0_SDA` e `ULTRASONIC_TRIG` em [`BoardPins.h`](src/config/BoardPins.h), ou sobrescreva-os antes de `begin()`. O ECHO do HC-SR04 precisa chegar ao ESP32 em **3,3 V**; confirme divisor/level shifter na placa.
+**Colisões a corrigir:** um GPIO só pode exercer uma função elétrica por vez. Não use o I2C0 provisório em GPIO1/42 simultaneamente com QTR S1 e ULTRA2. Remapeie-o com `definePinsI2C0()` antes de `begin()` quando esses módulos forem usados juntos. O ECHO de cada HC-SR04 precisa chegar ao ESP32 em **3,3 V**; confirme divisor ou level shifter na placa.
 
 ## Instalação
 
@@ -57,6 +59,7 @@ framework = arduino
 lib_deps =
     pololu/QTRSensors@4.0.0
     martinsos/HCSR04@2.0.0
+    pololu/VL53L0X@1.3.1
     adafruit/Adafruit TCS34725@1.4.4
     adafruit/Adafruit BusIO@1.17.4
     electroniccats/MPU6050@1.4.4
@@ -78,7 +81,7 @@ Os ambientes separam firmware de uso, interfaces opcionais e verificações de i
 | `examples` | Base de compilação de um exemplo isolado | Biblioteca sem checagem agregada | Evita misturar sketch de exemplo ao firmware interno. |
 | `example_serial` | Compilar `24_CalibracaoSerial` isoladamente | Exemplo + Serial | Propaga a macro aos `.cpp` da biblioteca. |
 | `example_web` | Compilar `23_CalibracaoWeb` isoladamente | Exemplo + Web | Propaga a macro aos `.cpp` da biblioteca. |
-| `examples_all` | Verificação de desenvolvimento/CI | Os 29 exemplos, isolados internamente | Detecta quebra de API sem gerar firmware para upload. |
+| `examples_all` | Verificação de desenvolvimento/CI | Os 30 exemplos, isolados internamente | Detecta quebra de API sem gerar firmware para upload. |
 | `unit` | Testar PWM, máscara e HSV | Unity + `RoboMath` | Separa cálculos determinísticos do hardware. |
 | `native` | Executar matemática em PC com toolchain nativo | Apenas matemática pura | É opcional; não é necessário no ESP32-S3. |
 
@@ -129,7 +132,7 @@ robo.begin();         // apenas escreve o diagnostico na Serial ja configurada
 
 Se `Serial.begin()` não for chamado antes, uma mensagem enviada pelo diagnóstico não inicializa a porta automaticamente; ela simplesmente pode não aparecer. No PlatformIO, `monitor_speed` deve ter o mesmo valor usado no sketch. O parâmetro de `begin(Print& diagnostico)` também permite redirecionar o texto para outro destino compatível com `Print`, mas a inicialização desse destino continua sendo responsabilidade do programa.
 
-Uma falha não impede a configuração dos módulos restantes. Quando o programa precisa decidir se pode continuar parcialmente, consulte `status()`, `linhaDisponivel()`, `corDisponivel()`, `ultrassomDisponivel()` e `imuDisponivel()`. `printErrosInicializacao()` continua disponível para reimprimir o diagnóstico sob demanda ou em outro objeto `Print`.
+Uma falha não impede a configuração dos módulos restantes. Quando o programa precisa decidir se pode continuar parcialmente, consulte `status()`, `linhaDisponivel()`, `corDisponivel()`, `distanciaDisponivel(id)`, `ultrassomDisponivel()` e `imuDisponivel()`. `printErrosInicializacao()` continua disponível para reimprimir o diagnóstico sob demanda ou em outro objeto `Print`.
 
 Ausência de calibração salva não é erro de hardware. Nesse caso, `status().calibracaoCarregada` será `false`, `printStatus()` mostrará `[PADRAO] Calibracao` e a biblioteca usará seus valores iniciais.
 
@@ -272,9 +275,52 @@ robo.mover(60 + correcao, 60 - correcao);
 
 Use `configurarPID(kp, ki, kd)`, `resetPID()` ou a conveniência `seguirLinha(base)`. O sinal final deve ser confirmado com a montagem física dos motores/sensores.
 
-## HC-SR04
+## Sensores de distância
 
-`distanciaCM()` retorna `NAN` em leitura inválida. `temObstaculo(cm)` só retorna true para uma medida válida dentro do limite. A biblioteca Martin Sosic é bloqueante pelo tempo de eco; evite chamar em alta frequência.
+A mesma API atende aos dois HC-SR04 e a até dois VL53L0X. Cada sensor recebe um ID numérico escolhido pela equipe; depois disso, o algoritmo não precisa saber qual tecnologia realizou a medida.
+
+```cpp
+const uint8_t FRENTE = 10;
+const uint8_t TRAS = 11;
+const uint8_t LATERAL = 20;
+
+void setup()
+{
+    robo.adicionarSensorDistancia(FRENTE, SENSOR_ULTRASSONICO, 17, 18);
+    robo.adicionarSensorDistancia(TRAS, SENSOR_ULTRASSONICO, 16, 42);
+
+    // O TCS direito tambem usa 0x29; libere o I2C1 para o VL53L0X.
+    robo.habilitarSensorCor(COR_DIREITA, false);
+    robo.adicionarSensorDistancia(LATERAL, SENSOR_TOF_VL53L0X,
+                                  BARRAMENTO_I2C1, 100);
+
+    robo.begin();
+}
+
+void loop()
+{
+    LeituraDistancia leitura = robo.lerDistancia(FRENTE);
+    if (leitura.valida)
+    {
+        Serial.println(leitura.centimetros);
+    }
+
+    if (robo.temObstaculo(LATERAL, 15.0f))
+    {
+        robo.parar();
+    }
+}
+```
+
+`LeituraDistancia` contém `id`, `sensor`, `tipo`, `centimetros`, `milimetros`, `valida`, `timeout` e `timestampMs`. Verifique `valida` antes de usar a distância. Em leitura inválida, `centimetros` vale `NAN` e `milimetros` vale zero. `timeout` distingue a expiração de uma leitura VL53L0X de um sensor apenas indisponível.
+
+Os IDs padrões são `DISTANCIA_ULTRASSOM_1`/`DISTANCIA_ULTRASSOM` para ULTRA1 e `DISTANCIA_ULTRASSOM_2` para ULTRA2. Os métodos históricos sem ID, como `distanciaCM()` e `temObstaculo(20)`, continuam usando ULTRA1. Os dois HC-SR04 são habilitados por padrão; os VL53L0X são opcionais e só participam do `begin()` depois de cadastrados ou configurados. Há dois slots para cada tecnologia; IDs de 0 a 254 precisam ser únicos, pois 255 é reservado para `DISTANCIA_DESCONHECIDA`. `adicionarSensorDistancia()` retorna `false` quando o cadastro é inválido ou não existe slot livre.
+
+### Regra do endereço I2C 0x29
+
+TCS34725 e VL53L0X iniciam no endereço `0x29`. Sem multiplexador ou isolamento elétrico, só pode haver **um desses dispositivos em cada barramento**. Para usar um VL53L0X no I2C0, desative o TCS esquerdo; para usar no I2C1, desative o TCS direito. Se houver conflito, `begin()` não tenta conversar com os dispositivos daquele endereço, retorna `false` e explica o problema na Serial. A MPU6050 usa `0x68` e pode continuar no mesmo barramento.
+
+A biblioteca Pololu permite selecionar `Wire` ou `Wire1`, e o driver RoboS3 usa aquisição contínua com timeout configurável. A chamada de leitura do VL53L0X é bloqueante até chegar uma medida ou expirar o timeout. O HC-SR04 também é bloqueante durante o tempo de eco; evite consultar sensores de distância mais vezes do que o controle realmente necessita.
 
 ## Cores: RGB, HSV e HSL
 
@@ -358,7 +404,7 @@ robo.definirBarramentoCor(COR_ESQUERDA, BARRAMENTO_I2C0);
 robo.definirBarramentoCor(COR_DIREITA, BARRAMENTO_I2C1);
 ```
 
-`definirBarramentoCor()` altera o barramento de cada TCS34725; `definirBarramentoIMU()` altera somente a MPU6050. A IMU (`0x68`) pode compartilhar qualquer barramento com um TCS (`0x29`). Os dois TCS não podem compartilhar um barramento sem multiplexador I2C, pois possuem o mesmo endereço `0x29`; nesse caso `begin()` deixa ambos como indisponíveis e informa o motivo pela Serial.
+`definirBarramentoCor()` altera o barramento de cada TCS34725; `definirBarramentoIMU()` altera somente a MPU6050. A IMU (`0x68`) pode compartilhar qualquer barramento com um TCS ou VL53L0X (`0x29`). Sem multiplexador, cada barramento admite somente um dispositivo `0x29`; nesse caso `begin()` deixa os dispositivos conflitantes indisponíveis e informa o motivo pela Serial.
 
 ## Estratégias de competição
 
@@ -410,7 +456,8 @@ Use `@return` em funções não `void`, documente cada `@param`, declare unidade
 | `status()` | Retorna `const StatusRobo&` com o estado de todos os módulos. |
 | `inicializacaoCompleta()` | Retorna `true` quando todos os módulos previstos responderam ao `begin()`. |
 | `operacaoBasicaDisponivel()` | Retorna `true` quando motores e QTR estão disponíveis para um seguidor simples. |
-| `linhaDisponivel()` / `ultrassomDisponivel()` / `imuDisponivel()` | Informam se o periférico iniciou corretamente. |
+| `linhaDisponivel()` / `ultrassomDisponivel()` / `imuDisponivel()` | Informam se o periférico iniciou corretamente; `ultrassomDisponivel()` consulta ULTRA1. |
+| `distanciaDisponivel(id)` | Consulta qualquer HC-SR04 ou VL53L0X cadastrado. |
 | `corDisponivel(sensor)` | Informa se o TCS34725 de `COR_ESQUERDA` ou `COR_DIREITA` está disponível. |
 | `printStatus(out)` | Imprime o estado dos módulos; o destino padrão é `Serial`. |
 | `printErrosInicializacao(out)` | Imprime somente os módulos que falharam e uma indicação do ponto a verificar. |
@@ -469,12 +516,19 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | `calcularPID(erro)` | Retorna a correção limitada para um erro informado. |
 | `seguirLinha(velocidadeBase)` | Lê a linha, calcula PID e comanda os motores; para se não houver linha. |
 
-### 5. Distância e obstáculo (HC-SR04)
+### 5. Distância e obstáculo (HC-SR04 e VL53L0X)
 
 | Método | Aplicação |
 |---|---|
 | `distanciaCM()` | Retorna centímetros ou `NAN` quando a leitura falha. |
 | `temObstaculo(maximoCm)` | Retorna `true` somente para medida válida até o limite. |
+| `adicionarSensorDistancia(id, SENSOR_ULTRASSONICO, trig, echo, maximoCm)` | Cadastra um dos dois slots HC-SR04 com ID próprio. |
+| `adicionarSensorDistancia(id, SENSOR_TOF_VL53L0X, barramento, timeoutMs)` | Cadastra um dos dois slots VL53L0X com ID próprio. |
+| `removerSensorDistancia(id)` | Desabilita o sensor correspondente antes de `begin()`. |
+| `lerDistancia(id)` | Retorna `LeituraDistancia`, independentemente da tecnologia cadastrada. |
+| `distanciaCM(id)` | Atalho que retorna centímetros ou `NAN`. |
+| `temObstaculo(id, maximoCm)` | Testa o limite usando o sensor identificado. |
+| `distanciaDisponivel(id)` | Informa se o sensor cadastrado respondeu ao `begin()`. |
 
 ### 6. Cores: dois TCS34725, RGB, HSV e HSL
 
@@ -526,9 +580,14 @@ Chame estes métodos somente antes de `begin()`.
 | `setTipoQTR(tipo)` | Seleciona `QTR_8A` ou `QTR_8RC`. |
 | `setTipoLinha(tipo)` | Seleciona `LINHA_PRETA` ou `LINHA_BRANCA`. |
 | `definePinsPonteH(ena, in1, in2, in3, in4, enb)` | Define toda a pinagem L298N. |
-| `definePinsUltrassom(trigger, echo)` | Define os pinos do HC-SR04. |
+| `definePinsUltrassom(trigger, echo)` | Compatibilidade: redefine o ULTRA1. |
+| `configurarUltrassom(sensor, trigger, echo, maximoCm)` | Configura `DISTANCIA_ULTRASSOM_1` ou `_2`. |
+| `habilitarUltrassom(sensor, habilitado)` | Ativa ou desativa um dos conectores HC-SR04. |
 | `definePinsI2C0(sda, scl, frequencia)` / `definePinsI2C1(sda, scl, frequencia)` | Define cada barramento I2C; padrão 400000 Hz. |
 | `definirBarramentoCor(sensor, barramento)` | Atribui cada TCS a `BARRAMENTO_I2C0` ou `BARRAMENTO_I2C1`. Os dois TCS devem ficar separados por causa do endereço `0x29`. |
+| `habilitarSensorCor(sensor, habilitado)` | Libera o endereço `0x29` de um barramento para um VL53L0X. |
+| `configurarVL53L0X(sensor, barramento, timeoutMs)` | Configura `DISTANCIA_VL53_1` ou `_2`. Para IDs próprios, prefira `adicionarSensorDistancia()`. |
+| `desabilitarVL53L0X(sensor)` | Desativa um slot VL53L0X antes de `begin()`. |
 | `definirBarramentoIMU(barramento)` | Atribui a MPU6050 a I2C0 ou I2C1. Ela pode compartilhar o barramento com um TCS. |
 | `configurarIMU(endereco)` | Define endereço I2C MPU6050, normalmente `0x68`. |
 
@@ -545,6 +604,8 @@ Chame estes métodos somente antes de `begin()`.
 | `CasoLinha` | `padrao`, `inicioMs` e `duracaoMs` de uma mudança registrada. |
 | `LeituraCor` | `rgb`, `hsv`, `hsl`, raw, `clear`, `cor`, `valida`, `timestampMs`. |
 | `LeituraIMU` | `accX/Y/Z`, `gyroX/Y/Z`, `roll`, `pitch`, `yawRelativo`, `temperatura`, `valida`, `timestampMs`. |
+| `SensorDistancia` / `TipoSensorDistancia` | Slots físicos e tecnologias `SENSOR_ULTRASSONICO`/`SENSOR_TOF_VL53L0X`. |
+| `LeituraDistancia` | ID, slot, tecnologia, centímetros, milímetros, validade, timeout e timestamp. |
 | `StatusRobo` | Flags de disponibilidade dos módulos e da calibração salva; também oferece `inicializacaoCompleta()` e `operacaoBasicaDisponivel()`. |
 
 #### Unidades e validade dos campos
@@ -573,15 +634,19 @@ Chame estes métodos somente antes de `begin()`.
 | `LeituraIMU.roll/pitch/yawRelativo` | graus | Yaw é relativo e deriva; não é direção magnética. |
 | `LeituraIMU.temperatura` | °C | Temperatura interna do chip, não do ambiente. |
 | `LeituraIMU.valida` | booleano | `false` quando a MPU6050 não está disponível. |
-| `StatusRobo.motores/linha/ultrassom` | booleano | Disponibilidade dos módulos sem I2C. |
+| `LeituraDistancia.centimetros/milimetros` | cm / mm | `NAN`/zero quando `valida` é false. |
+| `LeituraDistancia.id/sensor/tipo` | identificadores | Separam o nome escolhido, o slot físico e a tecnologia usada. |
+| `LeituraDistancia.valida/timeout` | booleanos | `timeout` indica especificamente expiração do VL53L0X. |
+| `StatusRobo.motores/linha/ultrassom/ultrassom2` | booleano | Disponibilidade dos módulos sem I2C; `ultrassom` é ULTRA1. |
 | `StatusRobo.i2c0/i2c1` | booleano | Resultado da inicialização de cada controlador I2C. |
-| `StatusRobo.corEsquerda/corDireita/imu` | booleano | Indica quais dispositivos responderam ao `begin()`. |
+| `StatusRobo.corEsquerda/corDireita/imu/vl53_1/vl53_2` | booleano | Indica quais dispositivos responderam ao `begin()`. |
+| `StatusRobo.*Habilitado` | booleano | Diferencia módulo opcional desativado de falha de inicialização. |
 | `StatusRobo.calibracaoCarregada` | booleano | `false` usa os valores padrão; não representa falha de hardware. |
 | `*.timestampMs` | milissegundos | Instante de aquisição segundo `millis()`. |
 
 ## Exemplos incluídos
 
-Os 29 sketches em [`examples/`](examples) seguem uma progressão didática:
+Os 30 sketches em [`examples/`](examples) seguem uma progressão didática:
 
 | Faixa | Aplicação |
 |---|---|
@@ -593,6 +658,7 @@ Os 29 sketches em [`examples/`](examples) seguem uma progressão didática:
 | 23–24 | calibração Web e Serial |
 | 25–28 | pinagem alternativa, erros do `begin()`, histórico e cor manual |
 | 29 | esqueleto OBR: calibração, obstáculo, padrões P/B, PID, verde, T, encruzilhada e giros de 90° |
+| 30 | cadastro por ID e leitura unificada de dois ultrassons e VL53L0X |
 
 ## Limites de validação
 

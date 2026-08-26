@@ -237,6 +237,20 @@
 #undef setup
 #undef loop
 
+#define robo robo_30
+#define setup setup_30
+#define loop loop_30
+#define SENSOR_FRENTE SENSOR_FRENTE_30
+#define SENSOR_TRAS SENSOR_TRAS_30
+#define SENSOR_LATERAL SENSOR_LATERAL_30
+#include "../examples/30_SensoresDistancia/30_SensoresDistancia.ino"
+#undef robo
+#undef setup
+#undef loop
+#undef SENSOR_FRENTE
+#undef SENSOR_TRAS
+#undef SENSOR_LATERAL
+
 void setup()
 {
 }

@@ -14,21 +14,23 @@ constexpr uint8_t QTR_PINS[8] = {1, 2, 3, 5, 6, 7, 8, 9};
 constexpr uint8_t QTR_EMITTER_PIN = 0xFF; ///< Nao existe conexao CTRL visivel.
 /** @} */
 
-/** @name Sensor ultrassonico ULTRA1
- *  @warning Esta atribuicao provisoria usa GPIO9, tambem usado por QTR S8.
- *  Atualize antes de usar QTR e ultrassom simultaneamente.
- *  @{ */
-constexpr uint8_t ULTRASONIC_TRIG = 9;
-constexpr uint8_t ULTRASONIC_ECHO = 46;
+/** @name Sensores ultrassonicos ULTRA1 e ULTRA2 @{ */
+constexpr uint8_t ULTRASONIC_1_TRIG = 17;
+constexpr uint8_t ULTRASONIC_1_ECHO = 18;
+constexpr uint8_t ULTRASONIC_2_TRIG = 16;
+constexpr uint8_t ULTRASONIC_2_ECHO = 42;
+/** Alias dos nomes usados ate a versao 0.3.0; apontam para ULTRA1. */
+constexpr uint8_t ULTRASONIC_TRIG = ULTRASONIC_1_TRIG;
+constexpr uint8_t ULTRASONIC_ECHO = ULTRASONIC_1_ECHO;
 /** @} */
 
 /** @name Barramentos I2C independentes
- *  @warning I2C0 SDA provisoriamente usa GPIO1, tambem usado por QTR S1.
- *  Atualize I2C0 antes de usar os dois modulos simultaneamente.
+ *  @warning A pinagem provisoria do I2C0 colide com QTR S1 e ULTRA2 ECHO.
+ *  Atualize SDA/SCL do I2C0 antes de usar esses modulos simultaneamente.
  *  @{ */
-constexpr uint8_t I2C0_SDA = 1;
-constexpr uint8_t I2C0_SCL = 42;
-constexpr uint8_t I2C1_SDA = 41;
+constexpr uint8_t I2C0_SDA = 47;
+constexpr uint8_t I2C0_SCL = 48;
+constexpr uint8_t I2C1_SDA = 39;
 constexpr uint8_t I2C1_SCL = 40;
 /** @} */
 

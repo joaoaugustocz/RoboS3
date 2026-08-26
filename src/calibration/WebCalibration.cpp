@@ -94,13 +94,16 @@ void WebCalibration::apiStatus()
 {
     auto& s = manager_.robo().status();
     IPAddress ip = WiFi.softAPIP();
-    char b[320];
+    char b[420];
     snprintf(b, sizeof(b),
-             "{\"version\":\"0.1.0\",\"ssid\":\"%s\",\"ip\":\"%u.%u.%u.%u\",\"qtr\":%s,"
-             "\"ultrasonic\":%s,\"color_left\":%s,\"color_right\":%s,\"imu\":%s,\"calibration\":%s,"
+             "{\"version\":\"0.4.0\",\"ssid\":\"%s\",\"ip\":\"%u.%u.%u.%u\",\"qtr\":%s,"
+             "\"ultrasonic\":%s,\"ultrasonic_2\":%s,\"vl53_1\":%s,\"vl53_2\":%s,"
+             "\"color_left\":%s,\"color_right\":%s,\"imu\":%s,\"calibration\":%s,"
              "\"heap\":%u,\"uptime_ms\":%u}",
              ssid_, ip[0], ip[1], ip[2], ip[3], s.linha ? "true" : "false",
-             s.ultrassom ? "true" : "false", s.corEsquerda ? "true" : "false",
+             s.ultrassom ? "true" : "false", s.ultrassom2 ? "true" : "false",
+             s.vl53_1 ? "true" : "false", s.vl53_2 ? "true" : "false",
+             s.corEsquerda ? "true" : "false",
              s.corDireita ? "true" : "false", s.imu ? "true" : "false",
              s.calibracaoCarregada ? "true" : "false", ESP.getFreeHeap(), millis());
     server_.send(200, "application/json", b);

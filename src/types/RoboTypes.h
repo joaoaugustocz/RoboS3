@@ -26,6 +26,43 @@ enum TipoLinha : uint8_t
     LINHA_PRETA = 0, ///< Linha escura sobre fundo claro.
     LINHA_BRANCA = 1 ///< Linha clara sobre fundo escuro.
 };
+
+/** @brief Identifica uma fonte de distancia acessivel pela interface unificada. */
+enum SensorDistancia : uint8_t
+{
+    DISTANCIA_ULTRASSOM_1 = 0, ///< HC-SR04 do primeiro conector ultrassonico.
+    DISTANCIA_ULTRASSOM = DISTANCIA_ULTRASSOM_1, ///< Alias compativel com a API anterior.
+    DISTANCIA_ULTRASSOM_2 = 1, ///< HC-SR04 do segundo conector ultrassonico.
+    DISTANCIA_VL53_1 = 2,      ///< Primeiro slot opcional para VL53L0X.
+    DISTANCIA_VL53_2 = 3,      ///< Segundo slot opcional para VL53L0X.
+    DISTANCIA_DESCONHECIDA = 255 ///< ID inexistente ou sem slot associado.
+};
+
+/** @brief Tecnologia usada para produzir uma leitura de distancia. */
+enum TipoSensorDistancia : uint8_t
+{
+    SENSOR_ULTRASSONICO = 0, ///< Medicao por tempo de eco, como HC-SR04.
+    SENSOR_TOF_VL53L0X = 1,  ///< Medicao optica Time of Flight por I2C.
+    SENSOR_DISTANCIA_DESCONHECIDO = 255 ///< ID nao cadastrado.
+};
+
+/**
+ * @brief Resultado comum para ultrassom e VL53L0X.
+ *
+ * Use valida antes de centimetros ou milimetros. Uma leitura pode ser
+ * invalida porque o sensor nao iniciou, nao respondeu ou excedeu seu timeout.
+ */
+struct LeituraDistancia
+{
+    uint8_t id;                 ///< ID logico cadastrado pela equipe.
+    SensorDistancia sensor;     ///< Fonte solicitada em lerDistancia().
+    TipoSensorDistancia tipo;   ///< Tecnologia da fonte.
+    float centimetros;          ///< Distancia em cm; NAN quando invalida.
+    uint16_t milimetros;        ///< Distancia em mm; 0 quando invalida.
+    bool valida;                ///< true somente quando a medida pode ser usada.
+    bool timeout;               ///< true quando o VL53L0X excedeu o tempo configurado.
+    uint32_t timestampMs;       ///< Instante da tentativa segundo millis().
+};
 /**
  * @brief Padrao binario dos oito sensores de linha.
  *
@@ -477,12 +514,21 @@ struct StatusRobo
 {
     bool motores;       ///< Ponte H configurada e pronta.
     bool linha;         ///< Conjunto QTR configurado e pronto.
-    bool ultrassom;     ///< Driver ultrassonico configurado.
+    bool ultrassom;     ///< ULTRA1 configurado; preserva o nome historico.
+    bool ultrassom2;    ///< ULTRA2 configurado.
     bool i2c0;          ///< Barramento I2C0 iniciado.
     bool i2c1;          ///< Barramento I2C1 iniciado.
     bool corEsquerda;   ///< TCS34725 esquerdo detectado.
     bool corDireita;    ///< TCS34725 direito detectado.
     bool imu;           ///< MPU6050 detectada.
+    bool vl53_1;        ///< Primeiro VL53L0X opcional detectado.
+    bool vl53_2;        ///< Segundo VL53L0X opcional detectado.
+    bool ultrassom1Habilitado; ///< ULTRA1 foi solicitado na configuracao.
+    bool ultrassom2Habilitado; ///< ULTRA2 foi solicitado na configuracao.
+    bool corEsquerdaHabilitada; ///< TCS esquerdo foi solicitado.
+    bool corDireitaHabilitada;  ///< TCS direito foi solicitado.
+    bool vl53_1Habilitado;      ///< Primeiro VL53 foi solicitado.
+    bool vl53_2Habilitado;      ///< Segundo VL53 foi solicitado.
 
     /**
      * Ausencia de calibracao salva nao e falha de hardware. A biblioteca usa
@@ -493,7 +539,12 @@ struct StatusRobo
     /** @return true quando todo o hardware previsto respondeu ao begin(). */
     bool inicializacaoCompleta() const
     {
-        return motores && linha && ultrassom && i2c0 && i2c1 && corEsquerda && corDireita && imu;
+        return motores && linha && i2c0 && i2c1 && imu &&
+               (!ultrassom1Habilitado || ultrassom) &&
+               (!ultrassom2Habilitado || ultrassom2) &&
+               (!corEsquerdaHabilitada || corEsquerda) &&
+               (!corDireitaHabilitada || corDireita) &&
+               (!vl53_1Habilitado || vl53_1) && (!vl53_2Habilitado || vl53_2);
     }
 
     /** @return true quando motores e linha permitem um seguidor simples. */

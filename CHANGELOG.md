@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+- interface unificada de distância por ID para dois HC-SR04 e até dois VL53L0X;
+- pinagem padrão revisada dos ultrassons: ULTRA1 em 17/18 e ULTRA2 em 16/42;
+- integração da biblioteca Pololu VL53L0X 1.3.1 com seleção entre I2C0 e I2C1,
+  modo contínuo e indicação de timeout;
+- detecção e diagnóstico de conflitos no endereço I2C `0x29` entre TCS34725 e
+  VL53L0X, com possibilidade de desativar sensores de cor opcionais;
+- leitura comum com centímetros, milímetros, tecnologia, validade, timeout,
+  identificador e timestamp;
+- exemplo 30 com cadastro de sensores e leitura independente da tecnologia.
+
 ## 0.3.0
 
 - seleção configurável de I2C para cada TCS34725 e para a MPU6050;

@@ -26,6 +26,25 @@ struct I2CPins
     uint32_t frequency; ///< Frequencia em hertz.
 };
 
+/** @brief Configuracao de um slot opcional para sensor VL53L0X. */
+struct VL53L0XConfig
+{
+    uint8_t id;                 ///< Identificador logico escolhido pela equipe.
+    bool habilitado;            ///< true quando o slot deve participar do begin().
+    BarramentoI2C barramento;   ///< I2C ao qual o sensor esta conectado.
+    uint16_t timeoutMs;         ///< Limite de espera de uma leitura bloqueante.
+};
+
+/** @brief Configuracao de um conector para sensor ultrassonico. */
+struct UltrasonicConfig
+{
+    uint8_t id;        ///< Identificador logico escolhido pela equipe.
+    bool habilitado;   ///< true quando o sensor deve participar do begin().
+    uint8_t trigger;   ///< GPIO de disparo TRIG.
+    uint8_t echo;      ///< GPIO de retorno ECHO.
+    uint16_t maximoCm; ///< Maior distancia aguardada pelo driver.
+};
+
 /** @brief Configuracao eletrica completa da placa usada por RoboS3::begin(). */
 struct BoardConfig
 {
@@ -33,12 +52,14 @@ struct BoardConfig
     uint8_t qtrEmitterPin;   ///< Controle do emissor ou 0xFF quando ausente.
     TipoQTR qtrType;         ///< Tipo eletrico do conjunto QTR.
     MotorPins motors;        ///< Pinagem da ponte H.
-    uint8_t ultrasonicTrig;  ///< GPIO TRIG do ultrassom.
-    uint8_t ultrasonicEcho;  ///< GPIO ECHO do ultrassom.
+    UltrasonicConfig ultrassom[2]; ///< Dois conectores HC-SR04 independentes.
     I2CPins i2c0;            ///< GPIOs e frequencia do controlador Wire.
     I2CPins i2c1;            ///< GPIOs e frequencia do controlador Wire1.
     BarramentoI2C corEsquerdaI2C; ///< Barramento atribuido ao TCS esquerdo.
     BarramentoI2C corDireitaI2C;  ///< Barramento atribuido ao TCS direito.
+    bool corEsquerdaHabilitada;   ///< Inicializa o TCS esquerdo quando true.
+    bool corDireitaHabilitada;    ///< Inicializa o TCS direito quando true.
+    VL53L0XConfig vl53[2];        ///< Dois slots ToF opcionais e independentes.
     BarramentoI2C imuI2C;         ///< Barramento atribuido a MPU6050.
     uint8_t mpuAddress;      ///< Endereco I2C da MPU6050.
     int8_t mpuInterrupt;     ///< GPIO INT ou -1 quando ausente.
@@ -57,12 +78,18 @@ struct BoardConfig
         c.qtrType = QTR_8A;
         c.motors = {board::MOTOR_ENA, board::MOTOR_IN1, board::MOTOR_IN2,
                     board::MOTOR_IN3, board::MOTOR_IN4, board::MOTOR_ENB};
-        c.ultrasonicTrig = board::ULTRASONIC_TRIG;
-        c.ultrasonicEcho = board::ULTRASONIC_ECHO;
+        c.ultrassom[0] = {DISTANCIA_ULTRASSOM_1, true, board::ULTRASONIC_1_TRIG,
+                          board::ULTRASONIC_1_ECHO, 400};
+        c.ultrassom[1] = {DISTANCIA_ULTRASSOM_2, true, board::ULTRASONIC_2_TRIG,
+                          board::ULTRASONIC_2_ECHO, 400};
         c.i2c0 = {board::I2C0_SDA, board::I2C0_SCL, 400000};
         c.i2c1 = {board::I2C1_SDA, board::I2C1_SCL, 400000};
         c.corEsquerdaI2C = BARRAMENTO_I2C0;
         c.corDireitaI2C = BARRAMENTO_I2C1;
+        c.corEsquerdaHabilitada = true;
+        c.corDireitaHabilitada = true;
+        c.vl53[0] = {DISTANCIA_VL53_1, false, BARRAMENTO_I2C0, 100};
+        c.vl53[1] = {DISTANCIA_VL53_2, false, BARRAMENTO_I2C1, 100};
         c.imuI2C = BARRAMENTO_I2C0;
         c.mpuAddress = board::MPU6050_ADDRESS;
         c.mpuInterrupt = board::MPU6050_INTERRUPT;

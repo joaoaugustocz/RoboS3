@@ -9,6 +9,7 @@
 #include "modules/LineSensor.h"
 #include "modules/MotorDriver.h"
 #include "modules/UltrasonicSensor.h"
+#include "modules/VL53L0XSensor.h"
 #include "modules/CalibrationStorage.h"
 #include "debug/RoboDebug.h"
 
@@ -90,6 +91,24 @@ class RoboS3
     void definePinsUltrassom(uint8_t trigger, uint8_t echo);
 
     /**
+     * @brief Configura um dos dois conectores ultrassonicos antes de begin().
+     * @param sensor DISTANCIA_ULTRASSOM_1 ou DISTANCIA_ULTRASSOM_2.
+     * @param trigger GPIO TRIG. @param echo GPIO ECHO.
+     * @param maximoCm Maior distancia aguardada pelo driver.
+     * @return false quando o identificador nao representa um ultrassom.
+     */
+    bool configurarUltrassom(SensorDistancia sensor, uint8_t trigger, uint8_t echo,
+                             uint16_t maximoCm = 400);
+
+    /**
+     * @brief Habilita ou desabilita um conector ultrassonico antes de begin().
+     * @param sensor DISTANCIA_ULTRASSOM_1 ou DISTANCIA_ULTRASSOM_2.
+     * @param habilitado true para inicializar; false para ignorar o conector.
+     * @return false quando o identificador nao representa um ultrassom.
+     */
+    bool habilitarUltrassom(SensorDistancia sensor, bool habilitado = true);
+
+    /**
      * @brief Configura o barramento I2C0 antes de begin().
      * @param sda GPIO de dados. @param scl GPIO de clock.
      * @param frequency Frequencia do barramento em hertz.
@@ -110,6 +129,60 @@ class RoboS3
      * @note Os dois TCS34725 usam endereco 0x29 e nao podem compartilhar barramento.
      */
     void definirBarramentoCor(SensorCor sensor, BarramentoI2C barramento);
+
+    /**
+     * @brief Habilita ou desabilita um TCS34725 antes de begin().
+     * @param sensor COR_ESQUERDA ou COR_DIREITA.
+     * @param habilitado true para inicializar; false para liberar o barramento.
+     * @note Desabilite o TCS do barramento que receber um VL53L0X: ambos usam 0x29.
+     */
+    void habilitarSensorCor(SensorCor sensor, bool habilitado = true);
+
+    /**
+     * @brief Habilita e atribui um slot VL53L0X a um barramento I2C.
+     * @param sensor DISTANCIA_VL53_1 ou DISTANCIA_VL53_2.
+     * @param barramento BARRAMENTO_I2C0 ou BARRAMENTO_I2C1.
+     * @param timeoutMs Limite bloqueante de cada leitura; use valor maior que zero.
+     * @return false quando o identificador nao representa um VL53L0X.
+     * @note Cada barramento admite somente um dispositivo de endereco 0x29 sem multiplexador.
+     */
+    bool configurarVL53L0X(SensorDistancia sensor, BarramentoI2C barramento,
+                           uint16_t timeoutMs = 100);
+
+    /**
+     * @brief Desabilita um slot VL53L0X.
+     * @param sensor DISTANCIA_VL53_1 ou DISTANCIA_VL53_2.
+     * @return false para um identificador invalido.
+     */
+    bool desabilitarVL53L0X(SensorDistancia sensor);
+
+    /**
+     * @brief Cadastra um ultrassom com um ID escolhido pela equipe.
+     * @param id Numero unico de 0 a 254 usado depois em lerDistancia(id).
+     * @param tipo Deve ser SENSOR_ULTRASSONICO.
+     * @param trigger GPIO TRIG. @param echo GPIO ECHO.
+     * @param maximoCm Maior distancia aguardada pelo driver.
+     * @return true quando cadastrado; false por tipo, ID duplicado ou falta de slot.
+     */
+    bool adicionarSensorDistancia(uint8_t id, TipoSensorDistancia tipo, uint8_t trigger,
+                                  uint8_t echo, uint16_t maximoCm = 400);
+
+    /**
+     * @brief Cadastra um VL53L0X com um ID escolhido pela equipe.
+     * @param id Numero unico de 0 a 254 usado depois em lerDistancia(id).
+     * @param tipo Deve ser SENSOR_TOF_VL53L0X.
+     * @param barramento I2C0 ou I2C1 onde o VL53 esta ligado.
+     * @param timeoutMs Limite de espera de uma leitura em milissegundos.
+     * @return true quando cadastrado; false por tipo, ID duplicado ou falta de slot.
+     */
+    bool adicionarSensorDistancia(uint8_t id, TipoSensorDistancia tipo,
+                                  BarramentoI2C barramento, uint16_t timeoutMs = 100);
+
+    /**
+     * @brief Desabilita o sensor cadastrado com o ID informado.
+     * @return true quando o ID foi encontrado.
+     */
+    bool removerSensorDistancia(uint8_t id);
 
     /**
      * @brief Atribui a MPU6050 a um dos dois barramentos I2C antes de begin().
@@ -323,8 +396,36 @@ class RoboS3
      */
     void seguirLinha(int velocidadeBase);
 
-    /** @return Distancia do HC-SR04 em centimetros ou NAN se a medida falhar. */
+    /**
+     * @brief Le qualquer sensor de distancia pela mesma interface.
+     * @param sensor Fonte desejada; usa ULTRA1 por padrao.
+     * @return Medida em cm e mm, validade, timeout, tipo, fonte e timestamp.
+     */
+    LeituraDistancia lerDistancia(SensorDistancia sensor = DISTANCIA_ULTRASSOM_1);
+
+    /**
+     * @brief Le o sensor cadastrado com o ID escolhido pela equipe.
+     * @param id Identificador informado no cadastro.
+     * @return Medida comum; valida e false quando o ID nao existe.
+     */
+    LeituraDistancia lerDistancia(uint8_t id);
+
+    /** @return Distancia do ULTRA1 em centimetros ou NAN se a medida falhar. */
     float distanciaCM();
+
+    /**
+     * @brief Le uma fonte especifica.
+     * @param sensor Slot fisico desejado.
+     * @return Centimetros ou NAN quando invalida.
+     */
+    float distanciaCM(SensorDistancia sensor);
+
+    /**
+     * @brief Le pelo ID cadastrado.
+     * @param id Identificador escolhido pela equipe.
+     * @return Centimetros ou NAN quando invalida.
+     */
+    float distanciaCM(uint8_t id);
 
     /**
      * @brief Verifica a presenca de um obstaculo.
@@ -332,6 +433,22 @@ class RoboS3
      * @return true para uma medida valida menor ou igual ao limite.
      */
     bool temObstaculo(float maximumCm);
+
+    /**
+     * @brief Verifica obstaculo usando uma fonte especifica.
+     * @param sensor Slot fisico desejado.
+     * @param maximumCm Distancia limite em centimetros.
+     * @return true somente para leitura valida menor ou igual ao limite.
+     */
+    bool temObstaculo(SensorDistancia sensor, float maximumCm);
+
+    /**
+     * @brief Verifica obstaculo usando o ID cadastrado pela equipe.
+     * @param id Identificador escolhido pela equipe.
+     * @param maximumCm Distancia limite em centimetros.
+     * @return true somente para leitura valida dentro do limite.
+     */
+    bool temObstaculo(uint8_t id, float maximumCm);
 
     /**
      * @brief Faz uma leitura completa de um TCS34725.
@@ -440,6 +557,20 @@ class RoboS3
     }
 
     /**
+     * @brief Consulta qualquer fonte de distancia.
+     * @param sensor Slot fisico desejado.
+     * @return true quando a fonte foi habilitada e respondeu ao begin().
+     */
+    bool distanciaDisponivel(SensorDistancia sensor) const;
+
+    /**
+     * @brief Consulta a disponibilidade pelo ID cadastrado.
+     * @param id Identificador escolhido pela equipe.
+     * @return true quando o sensor respondeu ao begin().
+     */
+    bool distanciaDisponivel(uint8_t id) const;
+
+    /**
      * @brief Consulta a disponibilidade de um TCS34725.
      * @param sensor COR_ESQUERDA ou COR_DIREITA.
      * @return true quando o sensor selecionado respondeu ao begin().
@@ -509,7 +640,8 @@ class RoboS3
     robos3::MotorDriver motors_;
     robos3::LineSensor line_;
     robos3::LinePID pid_;
-    robos3::UltrasonicSensor ultrasonic_;
+    robos3::UltrasonicSensor ultrasonic_[2];
+    robos3::VL53L0XSensor vl53_[2];
     robos3::ColorSensor colors_[2];
     robos3::IMUSensor imu_;
     robos3::CalibrationStorage storage_;
