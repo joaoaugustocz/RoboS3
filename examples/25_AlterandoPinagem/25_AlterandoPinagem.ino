@@ -2,11 +2,18 @@
 RoboS3 robo;
 void setup()
 {
-    robo.definePinsQTR(4, 5, 6, 7, 15, 16, 17, 18);
-    robo.definePinsPonteH(0, 36, 39, 38, 37, 35);
-    robo.definePinsUltrassom(9, 46);
-    robo.definePinsI2C0(1, 42);
-    robo.definePinsI2C1(41, 40);
+    robo.definePinsQTR(1, 2, 3, 5, 6, 7, 8, 9);
+    robo.definePinsPonteH(14, 15, 11, 12, 13, 21);
+
+    // A MPU pode estar em qualquer I2C. Aqui ela compartilha I2C1 com o TCS direito.
+    robo.definirBarramentoIMU(BARRAMENTO_I2C1);
+
+    // Os dois TCS34725 possuem o mesmo endereco 0x29 e devem permanecer separados.
+    robo.definirBarramentoCor(COR_ESQUERDA, BARRAMENTO_I2C0);
+    robo.definirBarramentoCor(COR_DIREITA, BARRAMENTO_I2C1);
+
+    // Ajuste estes GPIOs para os valores eletricos confirmados da sua placa.
+    // Nunca reutilize GPIO de QTR, ultrassom ou ponte H em um barramento I2C.
     robo.begin();
 }
 void loop()

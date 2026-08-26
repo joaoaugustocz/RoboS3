@@ -296,11 +296,18 @@ enum PadraoLinha : uint8_t
 /** Quantidade maxima de mudancas de padrao mantidas sem alocacao dinamica. */
 constexpr uint8_t MAX_HISTORICO_LINHA = 32;
 
-/** @brief Identifica um dos dois sensores TCS34725. */
+/** @brief Identifica um dos dois sensores TCS34725 da RoboS3. */
 enum SensorCor : uint8_t
 {
-    COR_ESQUERDA = 0, ///< Sensor ligado ao I2C0.
-    COR_DIREITA = 1   ///< Sensor ligado ao I2C1.
+    COR_ESQUERDA = 0, ///< Sensor instalado no lado esquerdo.
+    COR_DIREITA = 1   ///< Sensor instalado no lado direito.
+};
+
+/** @brief Seleciona um dos dois controladores I2C do ESP32-S3. */
+enum BarramentoI2C : uint8_t
+{
+    BARRAMENTO_I2C0 = 0, ///< Controlador Wire, configurado por definePinsI2C0().
+    BARRAMENTO_I2C1 = 1  ///< Controlador Wire1, configurado por definePinsI2C1().
 };
 
 /** @brief Resultado possivel da classificacao HSV. */

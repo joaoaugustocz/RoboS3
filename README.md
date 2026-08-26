@@ -2,7 +2,7 @@
 
 Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**, baseada no **ESP32-S3-N8R2**. A API começa simples (`frente`, `parar`, `seguirLinha`) e preserva acesso a valores brutos, calibração, máscara, PID, RGB/HSV/HSL e IMU para o aluno evoluir sem trocar de biblioteca.
 
-**Versão estável:** 0.2.0 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
+**Versão estável:** 0.3.0 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
 
 ## Conteúdo
 
@@ -16,26 +16,26 @@ Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**
 - [Exemplos](#exemplos-incluídos)
 - [Limites de validação](#limites-de-validação)
 
-> Estado do hardware: o repositório recebido estava vazio e não continha esquemático/PCB. A pinagem abaixo foi reconstruída das capturas de layout fornecidas. Ela precisa de teste elétrico na placa antes de movimentar um robô apoiado no chão.
+> Estado do hardware: a pinagem de QTR e ponte H foi revisada conforme a configuração informada para a placa. Ainda há colisões nos valores provisórios de I2C0 e ultrassom, detalhadas abaixo; eles precisam ser corrigidos com a pinagem elétrica confirmada antes do uso simultâneo.
 
 ## Hardware e pinagem
 
-| Função | GPIO/rede | Evidência |
+| Função | GPIO/rede padrão | Estado |
 |---|---:|---|
-| QTR S1…S8 | 4, 5, 6, 7, 15, 16, 17, 18 | trilhas S1…S8 até o header do ESP32 |
+| QTR S1…S8 | 1, 2, 3, 5, 6, 7, 8, 9 | revisão informada; S1 é o bit 7 e S8 é o bit 0 |
 | Tipo QTR | QTR-8A (analógico) | oito GPIO ADC; não há temporização RC/emitter visível |
 | Emitter QTR | não conectado | nenhuma rede CTRL/LEDON nas imagens |
-| ULTRA1 TRIG/ECHO | 9 / 46 | redes TRIG1/ECHO1 |
-| I2C0 SDA/SCL | 1 / 42 | primeiro par de redes SDA/SCL |
-| I2C1 SDA/SCL | 41 / 40 | segundo par de redes SDA1/SCL1 |
-| TCS esquerdo | I2C0, endereço 0x29 | sensores iguais em buses distintos |
-| TCS direito | I2C1, endereço 0x29 | sensores iguais em buses distintos |
-| MPU6050 | I2C0, endereço 0x68 | compartilha barramento sem conflito de endereço |
+| ULTRA1 TRIG/ECHO | 9 / 46 | provisório; TRIG conflita com QTR S8 |
+| I2C0 SDA/SCL | 1 / 42 | provisório; SDA conflita com QTR S1 |
+| I2C1 SDA/SCL | 41 / 40 | sem colisão conhecida nesta revisão |
+| TCS esquerdo | I2C0, endereço 0x29 | padrão configurável antes de `begin()` |
+| TCS direito | I2C1, endereço 0x29 | padrão configurável antes de `begin()` |
+| MPU6050 | I2C0, endereço 0x68 | padrão configurável; pode compartilhar I2C0 ou I2C1 com um TCS |
 | INT MPU6050 | não conectado/comprovado | não aparece nas capturas |
-| L298N ENA/IN1/IN2 | 0 / 36 / 39 | redes do conector PONTE-H |
-| L298N ENB/IN3/IN4 | 35 / 38 / 37 | redes do conector PONTE-H |
+| L298N ENA/IN1/IN2 | 14 / 15 / 11 | revisão informada da ponte H |
+| L298N ENB/IN3/IN4 | 21 / 12 / 13 | revisão informada da ponte H |
 
-Não foram comprovados LED, botão ou buzzer controláveis. `BoardPins.h` usa `-1` para esses periféricos. GPIO0 é pino de strapping; mantenha a ponte H sem forçar nível indevido durante boot. O ECHO do HC-SR04 precisa chegar ao ESP32 em **3,3 V**; confirme divisor/level shifter na placa.
+**Colisões a corrigir:** um GPIO só pode exercer uma função elétrica por vez. Portanto, com QTR em `1…9`, não use GPIO1 como SDA do I2C0 nem GPIO9 como TRIG do ultrassom. A biblioteca não tenta adivinhar a fiação: corrija `I2C0_SDA` e `ULTRASONIC_TRIG` em [`BoardPins.h`](src/config/BoardPins.h), ou sobrescreva-os antes de `begin()`. O ECHO do HC-SR04 precisa chegar ao ESP32 em **3,3 V**; confirme divisor/level shifter na placa.
 
 ## Instalação
 
@@ -78,7 +78,7 @@ Os ambientes separam firmware de uso, interfaces opcionais e verificações de i
 | `examples` | Base de compilação de um exemplo isolado | Biblioteca sem checagem agregada | Evita misturar sketch de exemplo ao firmware interno. |
 | `example_serial` | Compilar `24_CalibracaoSerial` isoladamente | Exemplo + Serial | Propaga a macro aos `.cpp` da biblioteca. |
 | `example_web` | Compilar `23_CalibracaoWeb` isoladamente | Exemplo + Web | Propaga a macro aos `.cpp` da biblioteca. |
-| `examples_all` | Verificação de desenvolvimento/CI | Os 28 exemplos, isolados internamente | Detecta quebra de API sem gerar firmware para upload. |
+| `examples_all` | Verificação de desenvolvimento/CI | Os 29 exemplos, isolados internamente | Detecta quebra de API sem gerar firmware para upload. |
 | `unit` | Testar PWM, máscara e HSV | Unity + `RoboMath` | Separa cálculos determinísticos do hardware. |
 | `native` | Executar matemática em PC com toolchain nativo | Apenas matemática pura | É opcional; não é necessário no ESP32-S3. |
 
@@ -115,6 +115,19 @@ void loop()
 ```
 
 `begin()` deixa os motores parados e tenta inicializar cada módulo independentemente. Ele retorna `true` somente quando todos os módulos previstos na PCB respondem. Quando algo falha, o próprio `begin()` imprime na `Serial` qual módulo não respondeu e uma indicação do que verificar. Inicie a `Serial` antes dele para visualizar essas mensagens.
+
+### Serial e velocidade de comunicação
+
+`robo.begin()` **não chama `Serial.begin()`**, não escolhe baud rate e não trava a velocidade da porta. O sketch continua responsável pela configuração:
+
+```cpp
+Serial.begin(9600);   // valido, se o Monitor Serial tambem usar 9600
+// ou Serial.begin(115200);
+
+robo.begin();         // apenas escreve o diagnostico na Serial ja configurada
+```
+
+Se `Serial.begin()` não for chamado antes, uma mensagem enviada pelo diagnóstico não inicializa a porta automaticamente; ela simplesmente pode não aparecer. No PlatformIO, `monitor_speed` deve ter o mesmo valor usado no sketch. O parâmetro de `begin(Print& diagnostico)` também permite redirecionar o texto para outro destino compatível com `Print`, mas a inicialização desse destino continua sendo responsabilidade do programa.
 
 Uma falha não impede a configuração dos módulos restantes. Quando o programa precisa decidir se pode continuar parcialmente, consulte `status()`, `linhaDisponivel()`, `corDisponivel()`, `ultrassomDisponivel()` e `imuDisponivel()`. `printErrosInicializacao()` continua disponível para reimprimir o diagnóstico sob demanda ou em outro objeto `Print`.
 
@@ -159,14 +172,38 @@ LeituraLinha linha = robo.lerLinha();
 | `lerPadraoLinha()` | Sim | `PadraoLinha` | Quando deseja escrever diretamente `BBBPPBBB` em um `if` ou `switch`. |
 | `ultimaLeituraLinha()` | Não | Referência para a última `LeituraLinha` | Reutilizar a aquisição anterior sem ler fisicamente o QTR outra vez. |
 
-`LeituraLinha` contém:
+### Campos e funções de `LeituraLinha`
 
-- `bruto[8]`: aquisição física S1…S8;
-- `calibrado[8]`: valores normalizados em `0…1000`;
-- `mascara`: bits em que preto físico vale `1`;
-- `caso`: o mesmo byte como `PadraoLinha`, por exemplo `BBBPPBBB`;
-- `padrao`: texto de nove posições contendo `P/B` e terminador zero;
-- `quantidadePretos`, `posicao`, `detectada`, `posicaoValida`, `timestampMs`, `tempoSemLinhaMs` e `ultimaPosicaoValida`.
+`linha.posicao` não é um submétodo: é um campo da estrutura retornada. Uma única chamada a `lerLinha()` preenche todos os campos abaixo, que também possuem documentação Doxygen exibida ao passar o mouse na IDE:
+
+```cpp
+LeituraLinha linha = robo.lerLinha();
+
+if (linha.posicaoValida)
+{
+    Serial.println(linha.posicao);
+}
+```
+
+| Campo ou função | Tipo/escala | Como usar |
+|---|---|---|
+| `bruto[8]` | `uint16_t[8]` | Aquisição física na ordem S1…S8; útil para diagnóstico e calibração. |
+| `calibrado[8]` | `uint16_t[8]`, `0…1000` | Valores normalizados pelos mínimos e máximos calibrados. |
+| `mascara` | `uint8_t` | S1 é bit 7, S8 é bit 0 e preto físico vale 1. |
+| `caso` | `PadraoLinha` | A mesma máscara com nome legível, como `BBBPPBBB`. |
+| `padrao[9]` | texto terminado em zero | Representação P/B pronta para impressão. |
+| `quantidadePretos` | `0…8` | Quantidade de sensores sobre preto físico. |
+| `posicao` | `0…7000` | Posição ponderada; 3500 é o centro. Confira `posicaoValida`. |
+| `detectada` | `bool` | Indica que a leitura atual encontrou contraste suficiente de linha. |
+| `posicaoValida` | `bool` | Indica que `posicao` pode ser usada no controle. |
+| `timestampMs` | milissegundos | Instante da aquisição segundo `millis()`. |
+| `tempoSemLinhaMs` | milissegundos | Tempo desde a última detecção válida. |
+| `ultimaPosicaoValida` | `0…7000` | Última posição confiável, útil para decidir o lado de busca após uma perda. |
+| `semPreto()` | `bool` | `true` quando nenhum dos oito sensores observa preto físico. |
+| `todosPretos()` | `bool` | `true` quando todos observam preto físico. |
+| `temPretoEsquerda()` | `bool` | Testa S1, S2 e S3. |
+| `temPretoCentro()` | `bool` | Testa S4 e S5. |
+| `temPretoDireita()` | `bool` | Testa S6, S7 e S8. |
 
 ### Padrões P/B e binários
 
@@ -241,7 +278,7 @@ Use `configurarPID(kp, ki, kd)`, `resetPID()` ou a conveniência `seguirLinha(ba
 
 ## Cores: RGB, HSV e HSL
 
-Dois TCS34725 de endereço 0x29 funcionam simultaneamente por `Wire` e `Wire1`. Uma aquisição gera raw, RGB 0…255, HSV/HSL, canal clear, classificação e timestamp.
+Dois TCS34725 de endereço `0x29` funcionam simultaneamente desde que estejam em barramentos separados. Por padrão, o esquerdo usa I2C0 (`Wire`) e o direito I2C1 (`Wire1`), mas essa atribuição é configurável antes de `begin()`. Uma aquisição gera raw, RGB 0…255, HSV/HSL, canal clear, classificação e timestamp.
 
 ```cpp
 LeituraCor e = robo.lerDadosCor(COR_ESQUERDA);
@@ -272,6 +309,17 @@ Uma faixa vermelha pode atravessar o zero do hue, por exemplo `345…15`. O exem
 
 Não há magnetômetro: `anguloZ()` **não é bússola** e deriva com o tempo. Como nenhuma linha INT foi comprovada, o DMP/FIFO não é usado. `calibrarIMU(ms)` exige o robô imóvel, é bloqueante e calcula offsets persistíveis.
 
+Para uma curva bloqueante controlada pelo giroscópio, use ângulo positivo para direita e negativo para esquerda:
+
+```cpp
+robo.inverterAnguloZ(false); // use true se a IMU estiver montada invertida
+
+bool completou = robo.girarAngulo(40, 90);   // 90 graus para direita
+completou = robo.girarAngulo(40, -90);       // 90 graus para esquerda
+```
+
+`girarAngulo()` retorna `false` se motores ou IMU estiverem indisponíveis ou se o timeout for atingido, evitando que o robô fique preso em um laço infinito. A função freia brevemente, deixa os motores parados ao terminar e é bloqueante; os valores reais ainda dependem da calibração da IMU, aderência, bateria e inércia.
+
 ## Persistência
 
 `salvarCalibracao()`, `carregarCalibracao()` e `apagarCalibracao()` usam Preferences/NVS no namespace `robos3`. O blob contém magic, versão de schema, tamanho e checksum. A flash só é escrita por comando explícito.
@@ -295,21 +343,31 @@ Defina `ROBOS3_DEBUG_LEVEL` como 0…3 via build flag. O modo normal não imprim
 
 ## Override de pinos
 
-Use antes de `begin()`:
+Use antes de `begin()`. Os valores de QTR e ponte H abaixo são os padrões atualmente definidos em `BoardPins.h`:
 
 ```cpp
-robo.definePinsQTR(4,5,6,7,15,16,17,18);
-robo.definePinsPonteH(0,36,39,38,37,35);
-robo.definePinsUltrassom(9,46);
-robo.definePinsI2C0(1,42);
-robo.definePinsI2C1(41,40);
+robo.definePinsQTR(1, 2, 3, 5, 6, 7, 8, 9);
+robo.definePinsPonteH(14, 15, 11, 12, 13, 21);
 ```
+
+Defina I2C e ultrassom somente com GPIOs físicos confirmados e que não estejam usados acima. Por exemplo, para colocar a MPU6050 no I2C1:
+
+```cpp
+robo.definirBarramentoIMU(BARRAMENTO_I2C1);
+robo.definirBarramentoCor(COR_ESQUERDA, BARRAMENTO_I2C0);
+robo.definirBarramentoCor(COR_DIREITA, BARRAMENTO_I2C1);
+```
+
+`definirBarramentoCor()` altera o barramento de cada TCS34725; `definirBarramentoIMU()` altera somente a MPU6050. A IMU (`0x68`) pode compartilhar qualquer barramento com um TCS (`0x29`). Os dois TCS não podem compartilhar um barramento sem multiplexador I2C, pois possuem o mesmo endereço `0x29`; nesse caso `begin()` deixa ambos como indisponíveis e informa o motivo pela Serial.
 
 ## Estratégias de competição
 
 A biblioteca não afirma “encruzilhada”, “gap”, “T” ou “curva de 90°”. Uma máscara vazia pode significar vários eventos; muitos sensores pretos também. Ela entrega máscara, padrão, posição, quantidade, tempo sem linha e ângulos para o aluno confirmar eventos com estado e histórico.
 
-Consulte `13_LogicaPista`, `21_MPU6050_Curva90` e `22_MPU6050_Rampa`.
+Consulte `13_LogicaPista`, `21_MPU6050_Curva90`, `22_MPU6050_Rampa` e
+`29_EsqueletoOBR`. O último é deliberadamente um esqueleto: mostra como separar
+casos especiais do seguidor normal/PID, mas tempos, confirmações e regras devem
+ser validados e completados pela equipe na pista real.
 
 ## Troubleshooting
 
@@ -367,6 +425,7 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | `mover(esquerda, direita)` | Comanda os dois motores independentemente; base para curvas suaves. |
 | `frente(velocidade)` / `tras(velocidade)` | Deslocamento retilíneo. |
 | `girarEsquerda(velocidade)` / `girarDireita(velocidade)` | Giro no próprio eixo. |
+| `girarAngulo(velocidade, anguloZ, timeoutMs)` | Giro bloqueante pela MPU6050; positivo é direita, negativo é esquerda. Retorna `false` sem motores/IMU ou por timeout. |
 | `motorEsquerdo(velocidade)` / `motorDireito(velocidade)` | Atualiza somente um motor e preserva o comando do outro. |
 | `parar()` | Desliga enables: parada livre (*coast*). |
 | `frear()` | Aplica frenagem ativa na ponte H. |
@@ -444,6 +503,7 @@ Use `atualizar()` no `loop()` ou `atualizarIMU()` antes de consultar ângulos. O
 | `roll()` / `pitch()` | Retornam inclinação lateral e longitudinal em graus. |
 | `anguloZ()` | Retorna yaw/Z relativo desde a última zeragem. |
 | `zerarAnguloZ()` | Define o yaw atual como zero; use antes de curvas controladas. |
+| `inverterAnguloZ(invertido)` | Corrige o sinal do eixo Z quando a orientação física da IMU está invertida. Não muda a regra: positivo continua sendo direita. |
 | `estaInclinado(graus)` | Retorna `true` se `abs(roll)` ou `abs(pitch)` atingir o limite. |
 | `calibrarIMU(ms)` | Para motores e calibra offsets com o robô imóvel; padrão 3000 ms. É bloqueante. |
 | `printIMU(out)` | Imprime dados atuais da IMU. |
@@ -468,6 +528,8 @@ Chame estes métodos somente antes de `begin()`.
 | `definePinsPonteH(ena, in1, in2, in3, in4, enb)` | Define toda a pinagem L298N. |
 | `definePinsUltrassom(trigger, echo)` | Define os pinos do HC-SR04. |
 | `definePinsI2C0(sda, scl, frequencia)` / `definePinsI2C1(sda, scl, frequencia)` | Define cada barramento I2C; padrão 400000 Hz. |
+| `definirBarramentoCor(sensor, barramento)` | Atribui cada TCS a `BARRAMENTO_I2C0` ou `BARRAMENTO_I2C1`. Os dois TCS devem ficar separados por causa do endereço `0x29`. |
+| `definirBarramentoIMU(barramento)` | Atribui a MPU6050 a I2C0 ou I2C1. Ela pode compartilhar o barramento com um TCS. |
 | `configurarIMU(endereco)` | Define endereço I2C MPU6050, normalmente `0x68`. |
 
 ### 10. Tipos retornados
@@ -476,7 +538,7 @@ Chame estes métodos somente antes de `begin()`.
 |---|---|
 | `Motor` / `SentidoMotor` | `MOTOR_ESQUERDO`, `MOTOR_DIREITO`; `FRENTE`, `TRAS`. |
 | `TipoQTR` / `TipoLinha` | `QTR_8A`, `QTR_8RC`; `LINHA_PRETA`, `LINHA_BRANCA`. |
-| `SensorCor` / `CorDetectada` | Lado esquerdo/direito; preta, branca, vermelha, verde, azul, amarela, laranja, roxa ou desconhecida. |
+| `SensorCor` / `BarramentoI2C` / `CorDetectada` | Lado esquerdo/direito; `BARRAMENTO_I2C0` ou `BARRAMENTO_I2C1`; preta, branca, vermelha, verde, azul, amarela, laranja, roxa ou desconhecida. |
 | `RGB`, `HSV`, `HSL` | Conversões retornadas pelas leituras de cor. |
 | `PadraoLinha` | Todos os 256 nomes P/B; `BBBPPBBB` equivale a `0b00011000`. |
 | `LeituraLinha` | `bruto`, `calibrado`, `mascara`, `caso`, texto `padrao`, contagem, posição, validade e tempos. |
@@ -492,21 +554,34 @@ Chame estes métodos somente antes de `begin()`.
 | `LeituraLinha.bruto[8]` | leitura física do QTR | Ordem S1…S8; a escala depende de `QTR_8A` ou `QTR_8RC`. |
 | `LeituraLinha.calibrado[8]` | `0…1000` | Valores normalizados pelos extremos de calibração. |
 | `LeituraLinha.mascara` / `.caso` | byte / `PadraoLinha` | S1 é bit 7, S8 é bit 0 e preto físico vale 1. |
+| `LeituraLinha.padrao[9]` | texto P/B | O nono caractere é o terminador nulo. |
+| `LeituraLinha.quantidadePretos` | `0…8` | Quantidade de bits pretos na máscara. |
 | `LeituraLinha.posicao` | `0…7000` | Centro geométrico 3500; confira `posicaoValida` antes de usar. |
+| `LeituraLinha.detectada` / `.posicaoValida` | booleano | Informam se houve linha e se a posição pode orientar os motores. |
+| `LeituraLinha.ultimaPosicaoValida` | `0…7000` | Posição anterior preservada durante uma perda. |
 | `LeituraLinha.timestampMs` / `.tempoSemLinhaMs` | milissegundos | Baseados em `millis()` e sujeitos ao rollover normal do Arduino. |
+| `CasoLinha.padrao` | `PadraoLinha` | Padrão observado naquela permanência. |
 | `CasoLinha.inicioMs` / `.duracaoMs` | milissegundos | O caso atual continua acumulando duração até a consulta. |
 | `LeituraCor.rgb` | `0…255` | Canais normalizados pelo canal clear. |
 | `LeituraCor.hsv` | H `0…360`; S/V `0…100` | Confira `valida` antes de classificar ou controlar o robô. |
 | `LeituraCor.hsl` | H `0…360`; S/L `0…100` | Conversão derivada da mesma aquisição RGB. |
+| `LeituraCor.rRaw/gRaw/bRaw/clear` | `uint16_t` cru | Canais entregues diretamente pelo TCS34725. |
+| `LeituraCor.cor` | `CorDetectada` | Resultado das faixas HSV ativas. |
+| `LeituraCor.valida` | booleano | `false` quando o sensor selecionado não está disponível. |
 | `LeituraIMU.accX/Y/Z` | m/s² | Aceleração calculada com a escala configurada da MPU6050. |
 | `LeituraIMU.gyroX/Y/Z` | graus/s | Velocidade angular após aplicação dos offsets. |
 | `LeituraIMU.roll/pitch/yawRelativo` | graus | Yaw é relativo e deriva; não é direção magnética. |
 | `LeituraIMU.temperatura` | °C | Temperatura interna do chip, não do ambiente. |
+| `LeituraIMU.valida` | booleano | `false` quando a MPU6050 não está disponível. |
+| `StatusRobo.motores/linha/ultrassom` | booleano | Disponibilidade dos módulos sem I2C. |
+| `StatusRobo.i2c0/i2c1` | booleano | Resultado da inicialização de cada controlador I2C. |
+| `StatusRobo.corEsquerda/corDireita/imu` | booleano | Indica quais dispositivos responderam ao `begin()`. |
+| `StatusRobo.calibracaoCarregada` | booleano | `false` usa os valores padrão; não representa falha de hardware. |
 | `*.timestampMs` | milissegundos | Instante de aquisição segundo `millis()`. |
 
 ## Exemplos incluídos
 
-Os 28 sketches em [`examples/`](examples) seguem uma progressão didática:
+Os 29 sketches em [`examples/`](examples) seguem uma progressão didática:
 
 | Faixa | Aplicação |
 |---|---|
@@ -517,6 +592,7 @@ Os 28 sketches em [`examples/`](examples) seguem uma progressão didática:
 | 19–22 | MPU6050, ângulos, curva de 90° e rampa |
 | 23–24 | calibração Web e Serial |
 | 25–28 | pinagem alternativa, erros do `begin()`, histórico e cor manual |
+| 29 | esqueleto OBR: calibração, obstáculo, padrões P/B, PID, verde, T, encruzilhada e giros de 90° |
 
 ## Limites de validação
 

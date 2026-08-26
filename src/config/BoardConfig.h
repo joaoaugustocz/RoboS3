@@ -35,8 +35,11 @@ struct BoardConfig
     MotorPins motors;        ///< Pinagem da ponte H.
     uint8_t ultrasonicTrig;  ///< GPIO TRIG do ultrassom.
     uint8_t ultrasonicEcho;  ///< GPIO ECHO do ultrassom.
-    I2CPins i2c0;            ///< Barramento do TCS esquerdo e MPU6050.
-    I2CPins i2c1;            ///< Barramento do TCS direito.
+    I2CPins i2c0;            ///< GPIOs e frequencia do controlador Wire.
+    I2CPins i2c1;            ///< GPIOs e frequencia do controlador Wire1.
+    BarramentoI2C corEsquerdaI2C; ///< Barramento atribuido ao TCS esquerdo.
+    BarramentoI2C corDireitaI2C;  ///< Barramento atribuido ao TCS direito.
+    BarramentoI2C imuI2C;         ///< Barramento atribuido a MPU6050.
     uint8_t mpuAddress;      ///< Endereco I2C da MPU6050.
     int8_t mpuInterrupt;     ///< GPIO INT ou -1 quando ausente.
     uint32_t pwmFrequency;   ///< Frequencia PWM dos motores em hertz.
@@ -58,6 +61,9 @@ struct BoardConfig
         c.ultrasonicEcho = board::ULTRASONIC_ECHO;
         c.i2c0 = {board::I2C0_SDA, board::I2C0_SCL, 400000};
         c.i2c1 = {board::I2C1_SDA, board::I2C1_SCL, 400000};
+        c.corEsquerdaI2C = BARRAMENTO_I2C0;
+        c.corDireitaI2C = BARRAMENTO_I2C1;
+        c.imuI2C = BARRAMENTO_I2C0;
         c.mpuAddress = board::MPU6050_ADDRESS;
         c.mpuInterrupt = board::MPU6050_INTERRUPT;
         c.pwmFrequency = 20000;

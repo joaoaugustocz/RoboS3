@@ -18,7 +18,8 @@ using namespace robos3;
 
 RoboS3::RoboS3()
     : config_(RoboConfig::padrao()), status_{}, motors_{}, line_{}, pid_{},
-      ultrasonic_{}, colors_{}, imu_{}, storage_{}, debug_{}, begun_(false)
+      ultrasonic_{}, colors_{}, imu_{}, storage_{}, debug_{}, begun_(false),
+      anguloZInvertido_(false)
 #ifdef ROBOS3_CALIBRATION_SERIAL
       ,
       serialCalibration_(nullptr)
@@ -52,9 +53,16 @@ bool RoboS3::begin(Print& diagnostico)
         Wire.begin(config_.board.i2c0.sda, config_.board.i2c0.scl, config_.board.i2c0.frequency);
     status_.i2c1 =
         Wire1.begin(config_.board.i2c1.sda, config_.board.i2c1.scl, config_.board.i2c1.frequency);
-    status_.corEsquerda = status_.i2c0 && colors_[0].begin(Wire);
-    status_.corDireita = status_.i2c1 && colors_[1].begin(Wire1);
-    status_.imu = status_.i2c0 && imu_.begin(Wire, config_.board.mpuAddress);
+    const bool coresMesmoBarramento = config_.board.corEsquerdaI2C == config_.board.corDireitaI2C;
+    if (!coresMesmoBarramento)
+    {
+        status_.corEsquerda = i2cDisponivel(config_.board.corEsquerdaI2C) &&
+                              colors_[0].begin(wire(config_.board.corEsquerdaI2C));
+        status_.corDireita = i2cDisponivel(config_.board.corDireitaI2C) &&
+                            colors_[1].begin(wire(config_.board.corDireitaI2C));
+    }
+    status_.imu = i2cDisponivel(config_.board.imuI2C) &&
+                  imu_.begin(wire(config_.board.imuI2C), config_.board.mpuAddress);
     pid_.configure(config_.kp, config_.ki, config_.kd, -config_.limitePID, config_.limitePID);
     status_.calibracaoCarregada = carregarCalibracao();
     begun_ = true;
@@ -142,6 +150,21 @@ void RoboS3::definePinsI2C1(uint8_t sda, uint8_t scl, uint32_t frequency)
 {
     config_.board.i2c1 = {sda, scl, frequency};
 }
+void RoboS3::definirBarramentoCor(SensorCor sensor, BarramentoI2C barramento)
+{
+    if (sensor == COR_DIREITA)
+    {
+        config_.board.corDireitaI2C = barramento;
+    }
+    else
+    {
+        config_.board.corEsquerdaI2C = barramento;
+    }
+}
+void RoboS3::definirBarramentoIMU(BarramentoI2C barramento)
+{
+    config_.board.imuI2C = barramento;
+}
 
 void RoboS3::mover(int left, int right)
 {
@@ -162,6 +185,60 @@ void RoboS3::girarEsquerda(int speed)
 void RoboS3::girarDireita(int speed)
 {
     mover(abs(speed), -abs(speed));
+}
+bool RoboS3::girarAngulo(int speed, float angleZ, uint32_t timeoutMs)
+{
+    parar();
+    if (!status_.motores || !status_.imu || speed == 0 || timeoutMs == 0 || !isfinite(angleZ))
+    {
+        return false;
+    }
+
+    const float target = fabsf(angleZ);
+    if (target < 0.1f)
+    {
+        return true;
+    }
+
+    // Atualiza o instante interno antes de zerar para que uma pausa longa entre
+    // leituras nao seja incorporada ao primeiro passo da manobra.
+    imu_.read();
+    imu_.zeroYaw();
+
+    const bool turnRight = angleZ > 0;
+    if (turnRight)
+    {
+        girarDireita(abs(speed));
+    }
+    else
+    {
+        girarEsquerda(abs(speed));
+    }
+
+    const uint32_t startMs = millis();
+    bool reached = false;
+    while (millis() - startMs < timeoutMs)
+    {
+        const LeituraIMU reading = imu_.read();
+        float measured = reading.yawRelativo;
+        if (anguloZInvertido_)
+        {
+            measured = -measured;
+        }
+
+        const float progress = turnRight ? measured : -measured;
+        if (progress >= target)
+        {
+            reached = true;
+            break;
+        }
+        delay(2);
+    }
+
+    frear();
+    delay(30);
+    parar();
+    return reached;
 }
 void RoboS3::motorEsquerdo(int speed)
 {
@@ -360,6 +437,14 @@ ColorSensor& RoboS3::color(SensorCor s)
 const ColorSensor& RoboS3::color(SensorCor s) const
 {
     return colors_[s == COR_DIREITA ? 1 : 0];
+}
+TwoWire& RoboS3::wire(BarramentoI2C barramento)
+{
+    return barramento == BARRAMENTO_I2C1 ? Wire1 : Wire;
+}
+bool RoboS3::i2cDisponivel(BarramentoI2C barramento) const
+{
+    return barramento == BARRAMENTO_I2C1 ? status_.i2c1 : status_.i2c0;
 }
 LeituraCor RoboS3::lerDadosCor(SensorCor s)
 {
@@ -584,15 +669,29 @@ void RoboS3::printErrosInicializacao(Print& out) const
     }
     if (!status_.corEsquerda)
     {
-        out.println(F("- Cor esquerda: TCS34725 nao respondeu no I2C0."));
+        if (config_.board.corEsquerdaI2C == config_.board.corDireitaI2C)
+        {
+            out.println(F("- Cores: dois TCS34725 (0x29) nao podem usar o mesmo I2C."));
+        }
+        else
+        {
+            out.print(F("- Cor esquerda: TCS34725 nao respondeu no "));
+            out.println(config_.board.corEsquerdaI2C == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
+        }
     }
     if (!status_.corDireita)
     {
-        out.println(F("- Cor direita: TCS34725 nao respondeu no I2C1."));
+        if (config_.board.corEsquerdaI2C != config_.board.corDireitaI2C)
+        {
+            out.print(F("- Cor direita: TCS34725 nao respondeu no "));
+            out.println(config_.board.corDireitaI2C == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
+        }
     }
     if (!status_.imu)
     {
-        out.println(F("- IMU: MPU6050 nao respondeu no I2C0/endereco configurado."));
+        out.print(F("- IMU: MPU6050 nao respondeu no "));
+        out.println(config_.board.imuI2C == BARRAMENTO_I2C1 ? F("I2C1/endereco configurado.")
+                                                             : F("I2C0/endereco configurado."));
     }
 }
 void RoboS3::printLinha(Print& out) const

@@ -35,7 +35,8 @@ class RoboS3
      * @brief Inicializa todos os modulos e imprime automaticamente as falhas.
      * @param diagnostico Destino das mensagens de erro; usa Serial por padrao.
      * @return true somente quando todos os modulos previstos responderam.
-     * @note Chame Serial.begin() antes para visualizar o diagnostico padrao.
+     * @note A biblioteca nao chama Serial.begin(). O sketch escolhe o baud rate
+     * e deve iniciar a porta antes desta funcao para visualizar o diagnostico.
      */
     bool begin(Print& diagnostico = Serial);
 
@@ -103,6 +104,21 @@ class RoboS3
     void definePinsI2C1(uint8_t sda, uint8_t scl, uint32_t frequency = 400000);
 
     /**
+     * @brief Atribui um TCS34725 a um dos dois barramentos I2C antes de begin().
+     * @param sensor COR_ESQUERDA ou COR_DIREITA.
+     * @param barramento BARRAMENTO_I2C0 (Wire) ou BARRAMENTO_I2C1 (Wire1).
+     * @note Os dois TCS34725 usam endereco 0x29 e nao podem compartilhar barramento.
+     */
+    void definirBarramentoCor(SensorCor sensor, BarramentoI2C barramento);
+
+    /**
+     * @brief Atribui a MPU6050 a um dos dois barramentos I2C antes de begin().
+     * @param barramento BARRAMENTO_I2C0 (Wire) ou BARRAMENTO_I2C1 (Wire1).
+     * @note A MPU6050 (0x68) pode compartilhar o barramento com um TCS34725 (0x29).
+     */
+    void definirBarramentoIMU(BarramentoI2C barramento);
+
+    /**
      * @brief Define o endereco I2C da MPU6050 antes de begin().
      * @param address Endereco de 7 bits, normalmente 0x68.
      */
@@ -129,6 +145,29 @@ class RoboS3
 
     /** @brief Gira no proprio eixo para a direita. @param velocidade Intensidade de 0 a 100. */
     void girarDireita(int velocidade);
+
+    /**
+     * @brief Gira no proprio eixo ate atingir um angulo medido pela MPU6050.
+     * @param velocidade Intensidade positiva de 1 a 100.
+     * @param anguloZ Angulo relativo em graus; positivo gira para a direita e
+     * negativo gira para a esquerda.
+     * @param timeoutMs Tempo maximo da manobra em milissegundos.
+     * @return true quando o angulo foi atingido; false sem motores, sem IMU ou
+     * por timeout.
+     * @note A chamada e bloqueante e deixa os motores parados ao terminar.
+     */
+    bool girarAngulo(int velocidade, float anguloZ, uint32_t timeoutMs = 5000);
+
+    /**
+     * @brief Inverte o sinal medido do eixo Z usado por girarAngulo().
+     * @param invertido true quando a orientacao fisica da IMU troca o sinal Z.
+     * @note Configure antes de chamar girarAngulo(); o comando continua usando
+     * angulo positivo para direita e negativo para esquerda.
+     */
+    void inverterAnguloZ(bool invertido)
+    {
+        anguloZInvertido_ = invertido;
+    }
 
     /** @brief Atualiza apenas o motor esquerdo. @param velocidade Comando de -100 a 100. */
     void motorEsquerdo(int velocidade);
@@ -460,6 +499,8 @@ class RoboS3
     friend class robos3::WebCalibration;
     robos3::ColorSensor& color(SensorCor sensor);
     const robos3::ColorSensor& color(SensorCor sensor) const;
+    TwoWire& wire(BarramentoI2C barramento);
+    bool i2cDisponivel(BarramentoI2C barramento) const;
     robos3::RoboCalibration makeCalibration() const;
     void applyCalibration(const robos3::RoboCalibration& data);
 
@@ -474,6 +515,7 @@ class RoboS3
     robos3::CalibrationStorage storage_;
     robos3::RoboDebug debug_;
     bool begun_;
+    bool anguloZInvertido_;
 #ifdef ROBOS3_CALIBRATION_SERIAL
     robos3::SerialCalibration* serialCalibration_;
 #endif

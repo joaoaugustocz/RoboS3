@@ -1,7 +1,15 @@
 # Changelog
 
-## Não publicado
+## 0.3.0
 
+- seleção configurável de I2C para cada TCS34725 e para a MPU6050;
+- diagnóstico explícito quando os dois TCS34725 são atribuídos ao mesmo I2C;
+- giro bloqueante por ângulo com timeout, sentido positivo/negativo e inversão
+  configurável do eixo Z;
+- exemplo didático de estratégia OBR com calibração de cores, obstáculo,
+  padrões de linha, PID, verde, encruzilhada e curvas de 90 graus;
+- revisão documentada da pinagem QTR e ponte H e alerta de colisões ainda
+  existentes entre os GPIOs provisórios de QTR, I2C0 e ultrassom;
 - documentação Doxygen padronizada em toda a biblioteca, incluindo módulos,
   configurações, tipos, constantes, parâmetros, retornos e unidades;
 - README reorganizado com instalação pela Arduino IDE, sumário, convenções da

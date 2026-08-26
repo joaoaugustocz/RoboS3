@@ -229,6 +229,14 @@
 #undef setup
 #undef loop
 
+#define robo robo_29
+#define setup setup_29
+#define loop loop_29
+#include "../examples/29_EsqueletoOBR/29_EsqueletoOBR.ino"
+#undef robo
+#undef setup
+#undef loop
+
 void setup()
 {
 }
