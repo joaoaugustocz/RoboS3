@@ -56,7 +56,7 @@ Os ambientes separam firmware de uso, interfaces opcionais e verificações de i
 | `examples` | Base de compilação de um exemplo isolado | Biblioteca sem checagem agregada | Evita misturar sketch de exemplo ao firmware interno. |
 | `example_serial` | Compilar `24_CalibracaoSerial` isoladamente | Exemplo + Serial | Propaga a macro aos `.cpp` da biblioteca. |
 | `example_web` | Compilar `23_CalibracaoWeb` isoladamente | Exemplo + Web | Propaga a macro aos `.cpp` da biblioteca. |
-| `examples_all` | Verificação de desenvolvimento/CI | Os 25 exemplos, isolados internamente | Detecta quebra de API sem gerar firmware para upload. |
+| `examples_all` | Verificação de desenvolvimento/CI | Os 28 exemplos, isolados internamente | Detecta quebra de API sem gerar firmware para upload. |
 | `unit` | Testar PWM, máscara e HSV | Unity + `RoboMath` | Separa cálculos determinísticos do hardware. |
 | `native` | Executar matemática em PC com toolchain nativo | Apenas matemática pura | É opcional; não é necessário no ESP32-S3. |
 
@@ -82,10 +82,8 @@ RoboS3 robo;
 
 void setup()
 {
-    if (!robo.begin())
-    {
-        robo.printErrosInicializacao();
-    }
+    Serial.begin(115200);
+    robo.begin();
 }
 
 void loop()
@@ -94,7 +92,9 @@ void loop()
 }
 ```
 
-`begin()` deixa os motores parados e tenta inicializar cada módulo independentemente. Ele retorna `true` somente quando todos os módulos previstos na PCB respondem. Uma falha não impede a configuração dos módulos restantes: consulte `status()`, `printErrosInicializacao()`, `linhaDisponivel()`, `corDisponivel()`, `ultrassomDisponivel()` e `imuDisponivel()` para decidir se o programa pode continuar parcialmente.
+`begin()` deixa os motores parados e tenta inicializar cada módulo independentemente. Ele retorna `true` somente quando todos os módulos previstos na PCB respondem. Quando algo falha, o próprio `begin()` imprime na `Serial` qual módulo não respondeu e uma indicação do que verificar. Inicie a `Serial` antes dele para visualizar essas mensagens.
+
+Uma falha não impede a configuração dos módulos restantes. Quando o programa precisa decidir se pode continuar parcialmente, consulte `status()`, `linhaDisponivel()`, `corDisponivel()`, `ultrassomDisponivel()` e `imuDisponivel()`. `printErrosInicializacao()` continua disponível para reimprimir o diagnóstico sob demanda ou em outro objeto `Print`.
 
 Ausência de calibração salva não é erro de hardware. Nesse caso, `status().calibracaoCarregada` será `false`, `printStatus()` mostrará `[PADRAO] Calibracao` e a biblioteca usará seus valores iniciais.
 
@@ -125,6 +125,78 @@ LeituraLinha linha = robo.lerLinha();
 ```
 
 `lerLinha()` faz uma aquisição física bruta e deriva dela valores calibrados, `BBBPPBBB`, máscara, contagem e posição. S1 é o bit 7; S8 é o bit 0. A posição vai de 0 a 7000, com centro 3500. Há suporte a `LINHA_PRETA` e `LINHA_BRANCA`, QTR-8A e QTR-8RC, pinagem customizada e getter const da última leitura.
+
+### Qual leitura de linha usar
+
+| Chamada | Faz nova aquisição? | Retorno | Quando usar |
+|---|---:|---|---|
+| `lerLinha()` | Sim | `LeituraLinha` completa | Quando precisa de dois ou mais dados: bruto, calibrado, posição, máscara, nome P/B ou tempo sem linha. É a leitura principal. |
+| `lerLinhaBruta(saida)` | Sim | Preenche `uint16_t saida[8]` | Diagnóstico elétrico, conferência da ordem S1–S8 e contraste sem calibração. |
+| `lerLinhaCalibrada(saida)` | Sim | Preenche `uint16_t saida[8]` em `0…1000` | Observar o resultado da calibração sensor por sensor. |
+| `lerLinhaBinaria()` | Sim | `uint8_t` | Quando deseja somente bits, por exemplo `0b00011000`. |
+| `lerPadraoLinha()` | Sim | `PadraoLinha` | Quando deseja escrever diretamente `BBBPPBBB` em um `if` ou `switch`. |
+| `ultimaLeituraLinha()` | Não | Referência para a última `LeituraLinha` | Reutilizar a aquisição anterior sem ler fisicamente o QTR outra vez. |
+
+`LeituraLinha` contém:
+
+- `bruto[8]`: aquisição física S1…S8;
+- `calibrado[8]`: valores normalizados em `0…1000`;
+- `mascara`: bits em que preto físico vale `1`;
+- `caso`: o mesmo byte como `PadraoLinha`, por exemplo `BBBPPBBB`;
+- `padrao`: texto de nove posições contendo `P/B` e terminador zero;
+- `quantidadePretos`, `posicao`, `detectada`, `posicaoValida`, `timestampMs`, `tempoSemLinhaMs` e `ultimaPosicaoValida`.
+
+### Padrões P/B e binários
+
+`PadraoLinha` possui os 256 casos possíveis. `P` significa preto físico/bit `1`, `B` significa branco físico/bit `0`, e os caracteres seguem S1 até S8:
+
+```cpp
+LeituraLinha linha = robo.lerLinha();
+
+if (linha.caso == BBBPPBBB)       // igual a 0b00011000
+{
+    robo.frente(60);
+}
+
+switch (linha.caso)
+{
+    case BBBBBBBP:                // igual a 0b00000001
+        robo.girarDireita(40);
+        break;
+
+    case PBBBBBBB:                // igual a 0b10000000
+        robo.girarEsquerda(40);
+        break;
+
+    default:
+        break;
+}
+```
+
+Os nomes são constantes de compilação e não criam uma tabela com 256 elementos na RAM. Para converter qualquer caso em texto, use `RoboS3::padraoLinhaTexto(caso, texto)` com um `char texto[9]`.
+
+### Histórico dos últimos casos
+
+O histórico registra **mudanças de padrão**, não cada amostra repetida. Ele usa um buffer circular: quando enche, o caso mais antigo é substituído. O tamanho inicial é 8 e pode ser configurado entre 0 e 32; zero desativa o registro.
+
+```cpp
+robo.configurarHistoricoLinha(10); // limpa e guarda até 10 mudanças
+
+// Cada lerLinha() atualiza o histórico.
+LeituraLinha linha = robo.lerLinha();
+
+PadraoLinha casos[10];
+uint8_t quantidade = robo.copiarUltimosCasosLinha(casos, 10);
+
+CasoLinha detalhado[10];
+quantidade = robo.copiarHistoricoLinha(detalhado, 10);
+```
+
+As duas cópias vêm do caso mais novo para o mais antigo. `CasoLinha` contém `padrao`, `inicioMs` e `duracaoMs`. A duração de um caso encerrado vai da primeira leitura desse padrão até a primeira leitura do padrão seguinte. A duração do caso mais recente continua sendo atualizada até o momento da consulta.
+
+Não há `new`, alocação dinâmica nem cópia automática de listas durante a leitura. A atualização é O(1) e reserva 384 bytes para o máximo de 32 casos no ESP32-S3, independentemente do tamanho configurado. A medição do firmware principal passou de 25.044 para 25.428 bytes de RAM. As listas só são copiadas quando o usuário chama uma das funções `copiar...`.
+
+Consulte `27_HistoricoLinha` para um exemplo completo das duas visualizações.
 
 `tempoSemLinha()` volta a zero quando a linha reaparece. Calibração por tempo é bloqueante e intencional; leituras normais não introduzem `delay`.
 
@@ -157,6 +229,21 @@ robo.setGanhoCor(COR_DIREITA, GANHO_16X);
 
 Faixas de Hue podem atravessar 360° (`345…15`). Preto/branco usam saturação e valor. Perfis padrão são apenas ponto de partida; calibre sob a iluminação real. Tempos disponíveis: 2,4; 24; 50; 101; 154 e 600 ms.
 
+Há duas formas de calibrar a classificação:
+
+- automática: `calibrarCor(sensor, cor, amostras)` mede o objeto posicionado sob o sensor;
+- manual: observe HSV no Monitor Serial e informe os limites com `definirFaixaHSV()`.
+
+```cpp
+robo.definirFaixaHSV(COR_ESQUERDA, COR_VERDE,
+                     75, 165,   // H mínimo e máximo
+                     25, 100,   // S mínimo e máximo
+                     15, 100);  // V mínimo e máximo
+robo.salvarCalibracao();
+```
+
+Uma faixa vermelha pode atravessar o zero do hue, por exemplo `345…15`. O exemplo `28_CalibracaoCorManual` imprime HSV, configura verde/vermelho/azul, ajusta ganho e integração e salva os valores.
+
 ## MPU6050
 
 `LeituraIMU` expõe aceleração em m/s², giroscópio em graus/s, temperatura e ângulos em graus. Pitch/roll usam filtro complementar; Z é integração relativa do giroscópio desde `zerarAnguloZ()`.
@@ -182,7 +269,7 @@ Serial opera a 115200 e oferece `help`, `status`, linha, motores, cores, IMU, `s
 
 ## Debug
 
-Defina `ROBOS3_DEBUG_LEVEL` como 0…3 via build flag. O modo normal não imprime continuamente. `printLinha`, `printCores`, `printIMU`, `printMotores` e `printStatus` podem ser chamados explicitamente.
+Defina `ROBOS3_DEBUG_LEVEL` como 0…3 via build flag. O modo normal não imprime continuamente. A única saída automática é o diagnóstico de falha do `begin()`. `printLinha`, `printCores`, `printIMU`, `printMotores`, `printStatus` e `printErrosInicializacao` podem ser chamados explicitamente.
 
 ## Override de pinos
 
@@ -220,7 +307,7 @@ Todos os métodos abaixo pertencem a `RoboS3`. Crie uma única instância, confi
 | Método | Aplicação |
 |---|---|
 | `RoboS3()` | Cria o objeto com a pinagem padrão da PCB. |
-| `begin()` | Inicializa ponte H, QTR, ultrassom, I2C, cores, IMU e configurações salvas. Retorna `true` somente se todos os módulos previstos responderam. |
+| `begin(diagnostico)` | Inicializa todos os módulos. Retorna `true` somente se todos responderam e imprime automaticamente as falhas no `Print` recebido, `Serial` por padrão. |
 | `atualizar()` | Atualiza IMU e interfaces Serial/Web habilitadas. Chame continuamente no `loop()`. |
 | `status()` | Retorna `const StatusRobo&` com o estado de todos os módulos. |
 | `inicializacaoCompleta()` | Retorna `true` quando todos os módulos previstos responderam ao `begin()`. |
@@ -257,8 +344,15 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | `lerLinhaBruta(saida)` | Preenche `uint16_t saida[8]` com a leitura física. |
 | `lerLinhaCalibrada(saida)` | Preenche `uint16_t saida[8]` com valores `0…1000`. |
 | `lerLinhaBinaria()` | Retorna a máscara de sensores pretos: S1 é bit 7 e S8 é bit 0. |
+| `lerPadraoLinha()` | Retorna diretamente um `PadraoLinha`, como `BBBPPBBB`. |
 | `ultimaLeituraLinha()` | Retorna a última `LeituraLinha`, sem nova aquisição. |
 | `tempoSemLinha()` | Retorna milissegundos desde a última detecção válida. |
+| `configurarHistoricoLinha(tamanho)` | Limpa e configura entre 0 e 32 mudanças armazenadas; zero desativa. |
+| `limparHistoricoLinha()` | Remove todos os casos registrados. |
+| `capacidadeHistoricoLinha()` / `quantidadeHistoricoLinha()` | Informam espaço configurado e quantidade atualmente válida. |
+| `copiarUltimosCasosLinha(saida, maximo)` | Copia somente `PadraoLinha`, do mais novo para o mais antigo. |
+| `copiarHistoricoLinha(saida, maximo)` | Copia `CasoLinha` com início e duração, do mais novo para o mais antigo. |
+| `padraoLinhaTexto(caso, saida)` | Converte qualquer enum P/B para `char saida[9]`. |
 | `calibrarLinha(ms)` | Para os motores e coleta extremos por tempo; padrão 5000 ms. É bloqueante. |
 | `calibrarLinhaAmostras(amostras)` | Variante bloqueante por quantidade de amostras. |
 | `configurarLimiarLinha(limiar)` | Define o limiar binário `0…1000`; inicial 500. |
@@ -344,11 +438,14 @@ Chame estes métodos somente antes de `begin()`.
 | `TipoQTR` / `TipoLinha` | `QTR_8A`, `QTR_8RC`; `LINHA_PRETA`, `LINHA_BRANCA`. |
 | `SensorCor` / `CorDetectada` | Lado esquerdo/direito; preta, branca, vermelha, verde, azul, amarela, laranja, roxa ou desconhecida. |
 | `RGB`, `HSV`, `HSL` | Conversões retornadas pelas leituras de cor. |
+| `PadraoLinha` | Todos os 256 nomes P/B; `BBBPPBBB` equivale a `0b00011000`. |
+| `LeituraLinha` | `bruto`, `calibrado`, `mascara`, `caso`, texto `padrao`, contagem, posição, validade e tempos. |
+| `CasoLinha` | `padrao`, `inicioMs` e `duracaoMs` de uma mudança registrada. |
 | `LeituraCor` | `rgb`, `hsv`, `hsl`, raw, `clear`, `cor`, `valida`, `timestampMs`. |
 | `LeituraIMU` | `accX/Y/Z`, `gyroX/Y/Z`, `roll`, `pitch`, `yawRelativo`, `temperatura`, `valida`, `timestampMs`. |
 | `StatusRobo` | Flags de disponibilidade dos módulos e da calibração salva; também oferece `inicializacaoCompleta()` e `operacaoBasicaDisponivel()`. |
 
-Os 26 exemplos em `examples/` seguem essa divisão: básicos e motores (01–04), ultrassom (05), linha/PID (06–13), cores (14–18), IMU (19–22), calibração Web/Serial (23–24), pinagem alternativa (25) e diagnóstico de inicialização (26).
+Os 28 exemplos em `examples/` seguem essa divisão: básicos e motores (01–04), ultrassom (05), linha/PID (06–13), cores (14–18), IMU (19–22), calibração Web/Serial (23–24), pinagem alternativa (25), diagnóstico de inicialização (26), histórico de linha (27) e calibração manual de cor (28).
 
 ## Limites de validação
 

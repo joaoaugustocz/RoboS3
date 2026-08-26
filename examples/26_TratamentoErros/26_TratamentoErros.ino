@@ -8,18 +8,11 @@ void setup()
     delay(500);
 
     // begin() tenta iniciar todos os modulos, mesmo quando um deles falha.
-    // O retorno sera true somente se todo o hardware esperado responder.
+    // Se houver falha, ele ja imprime automaticamente o diagnostico na Serial.
     bool tudoPronto = robo.begin();
-
-    // Mostra sempre o resultado completo. A calibracao [PADRAO] nao e erro:
-    // significa apenas que ainda nao existe uma calibracao salva na memoria.
-    robo.printStatus();
 
     if (!tudoPronto)
     {
-        // Imprime somente os modulos que falharam e uma pista do que conferir.
-        robo.printErrosInicializacao();
-
         // status() permite que o programa trate cada modulo separadamente.
         const StatusRobo& status = robo.status();
 

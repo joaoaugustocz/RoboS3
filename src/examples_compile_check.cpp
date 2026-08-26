@@ -209,6 +209,26 @@
 #undef setup
 #undef loop
 
+#define robo robo_27
+#define setup setup_27
+#define loop loop_27
+#define imprimirHistorico imprimirHistorico_27
+#define proximaImpressaoMs proximaImpressaoMs_27
+#include "../examples/27_HistoricoLinha/27_HistoricoLinha.ino"
+#undef robo
+#undef setup
+#undef loop
+#undef imprimirHistorico
+#undef proximaImpressaoMs
+
+#define robo robo_28
+#define setup setup_28
+#define loop loop_28
+#include "../examples/28_CalibracaoCorManual/28_CalibracaoCorManual.ino"
+#undef robo
+#undef setup
+#undef loop
+
 void setup()
 {
 }

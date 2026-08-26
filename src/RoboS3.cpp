@@ -34,7 +34,7 @@ RoboS3::RoboS3()
 {
 }
 
-bool RoboS3::begin()
+bool RoboS3::begin(Print& diagnostico)
 {
     status_ = {};
     status_.motores = motors_.begin(config_.board.motors, config_.board.pwmFrequency,
@@ -58,10 +58,6 @@ bool RoboS3::begin()
     pid_.configure(config_.kp, config_.ki, config_.kd, -config_.limitePID, config_.limitePID);
     status_.calibracaoCarregada = carregarCalibracao();
     begun_ = true;
-    if (debug_.level() >= DEBUG_INFO)
-    {
-        printStatus();
-    }
 #if defined(ROBOS3_CALIBRATION_WEB) || defined(ROBOS3_CALIBRATION_SERIAL)
     static CalibrationManager manager(*this);
     calibrationManager_ = &manager;
@@ -76,9 +72,18 @@ bool RoboS3::begin()
     webCalibration_ = &web;
     web.begin();
 #endif
-    // A inicializacao de cada modulo e independente. Assim o programa pode
-    // consultar status() e decidir se consegue trabalhar com o hardware restante.
-    return status_.inicializacaoCompleta();
+    // A inicializacao de cada modulo e independente. Em caso de falha, begin()
+    // ja informa o defeito no destino Print recebido (Serial por padrao).
+    const bool complete = status_.inicializacaoCompleta();
+    if (!complete)
+    {
+        printErrosInicializacao(diagnostico);
+    }
+    else if (debug_.level() >= DEBUG_INFO)
+    {
+        printStatus(diagnostico);
+    }
+    return complete;
 }
 
 void RoboS3::atualizar()
@@ -254,6 +259,10 @@ uint8_t RoboS3::lerLinhaBinaria()
 {
     return line_.read().mascara;
 }
+PadraoLinha RoboS3::lerPadraoLinha()
+{
+    return line_.read().caso;
+}
 const LeituraLinha& RoboS3::ultimaLeituraLinha() const
 {
     return line_.last();
@@ -261,6 +270,34 @@ const LeituraLinha& RoboS3::ultimaLeituraLinha() const
 uint32_t RoboS3::tempoSemLinha() const
 {
     return line_.timeWithoutLine();
+}
+void RoboS3::configurarHistoricoLinha(uint8_t tamanho)
+{
+    line_.setHistoryCapacity(tamanho);
+}
+void RoboS3::limparHistoricoLinha()
+{
+    line_.clearHistory();
+}
+uint8_t RoboS3::capacidadeHistoricoLinha() const
+{
+    return line_.historyCapacity();
+}
+uint8_t RoboS3::quantidadeHistoricoLinha() const
+{
+    return line_.historyCount();
+}
+uint8_t RoboS3::copiarUltimosCasosLinha(PadraoLinha saida[], uint8_t maximo) const
+{
+    return line_.copyRecentPatterns(saida, maximo);
+}
+uint8_t RoboS3::copiarHistoricoLinha(CasoLinha saida[], uint8_t maximo) const
+{
+    return line_.copyHistory(saida, maximo);
+}
+void RoboS3::padraoLinhaTexto(PadraoLinha padrao, char saida[9])
+{
+    linePattern(static_cast<uint8_t>(padrao), saida);
 }
 void RoboS3::calibrarLinha(uint32_t ms)
 {
