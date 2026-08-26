@@ -156,6 +156,7 @@ struct LeituraIMU
 
 struct StatusRobo
 {
+    // Cada campo informa se aquele modulo foi iniciado e pode ser usado.
     bool motores;
     bool linha;
     bool ultrassom;
@@ -164,5 +165,20 @@ struct StatusRobo
     bool corEsquerda;
     bool corDireita;
     bool imu;
+
+    // Ausencia de calibracao salva nao e falha de hardware. A biblioteca usa
+    // valores padrao ate que o usuario execute e salve uma calibracao.
     bool calibracaoCarregada;
+
+    // Retorna true quando todo o hardware previsto na PCB respondeu ao begin().
+    bool inicializacaoCompleta() const
+    {
+        return motores && linha && ultrassom && i2c0 && i2c1 && corEsquerda && corDireita && imu;
+    }
+
+    // Motores e linha formam o conjunto minimo para um seguidor de linha simples.
+    bool operacaoBasicaDisponivel() const
+    {
+        return motores && linha;
+    }
 };

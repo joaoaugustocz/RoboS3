@@ -82,7 +82,10 @@ RoboS3 robo;
 
 void setup()
 {
-    robo.begin();
+    if (!robo.begin())
+    {
+        robo.printErrosInicializacao();
+    }
 }
 
 void loop()
@@ -91,7 +94,11 @@ void loop()
 }
 ```
 
-`begin()` deixa os motores parados, inicializa cada módulo independentemente e continua quando um periférico opcional não responde. Consulte `linhaDisponivel()`, `corDisponivel()`, `imuDisponivel()` e `printStatus()`.
+`begin()` deixa os motores parados e tenta inicializar cada módulo independentemente. Ele retorna `true` somente quando todos os módulos previstos na PCB respondem. Uma falha não impede a configuração dos módulos restantes: consulte `status()`, `printErrosInicializacao()`, `linhaDisponivel()`, `corDisponivel()`, `ultrassomDisponivel()` e `imuDisponivel()` para decidir se o programa pode continuar parcialmente.
+
+Ausência de calibração salva não é erro de hardware. Nesse caso, `status().calibracaoCarregada` será `false`, `printStatus()` mostrará `[PADRAO] Calibracao` e a biblioteca usará seus valores iniciais.
+
+O exemplo `26_TratamentoErros` mostra o fluxo completo: imprime o diagnóstico, desativa recursos dependentes do módulo ausente e interrompe somente quando motores ou QTR não estão disponíveis.
 
 ## Motores e L298N
 
@@ -213,12 +220,15 @@ Todos os métodos abaixo pertencem a `RoboS3`. Crie uma única instância, confi
 | Método | Aplicação |
 |---|---|
 | `RoboS3()` | Cria o objeto com a pinagem padrão da PCB. |
-| `begin()` | Inicializa ponte H, QTR, ultrassom, I2C, cores, IMU e configurações salvas. Retorna `true` somente se motores e linha iniciaram. |
+| `begin()` | Inicializa ponte H, QTR, ultrassom, I2C, cores, IMU e configurações salvas. Retorna `true` somente se todos os módulos previstos responderam. |
 | `atualizar()` | Atualiza IMU e interfaces Serial/Web habilitadas. Chame continuamente no `loop()`. |
 | `status()` | Retorna `const StatusRobo&` com o estado de todos os módulos. |
+| `inicializacaoCompleta()` | Retorna `true` quando todos os módulos previstos responderam ao `begin()`. |
+| `operacaoBasicaDisponivel()` | Retorna `true` quando motores e QTR estão disponíveis para um seguidor simples. |
 | `linhaDisponivel()` / `ultrassomDisponivel()` / `imuDisponivel()` | Informam se o periférico iniciou corretamente. |
 | `corDisponivel(sensor)` | Informa se o TCS34725 de `COR_ESQUERDA` ou `COR_DIREITA` está disponível. |
 | `printStatus(out)` | Imprime o estado dos módulos; o destino padrão é `Serial`. |
+| `printErrosInicializacao(out)` | Imprime somente os módulos que falharam e uma indicação do ponto a verificar. |
 | `setDebugLevel(nivel)` | Seleciona `DEBUG_OFF`, `DEBUG_ERROR`, `DEBUG_INFO` ou `DEBUG_VERBOSE`. |
 
 ### 2. Motores e ponte H L298N
@@ -336,9 +346,9 @@ Chame estes métodos somente antes de `begin()`.
 | `RGB`, `HSV`, `HSL` | Conversões retornadas pelas leituras de cor. |
 | `LeituraCor` | `rgb`, `hsv`, `hsl`, raw, `clear`, `cor`, `valida`, `timestampMs`. |
 | `LeituraIMU` | `accX/Y/Z`, `gyroX/Y/Z`, `roll`, `pitch`, `yawRelativo`, `temperatura`, `valida`, `timestampMs`. |
-| `StatusRobo` | Flags de disponibilidade dos módulos e da calibração salva. |
+| `StatusRobo` | Flags de disponibilidade dos módulos e da calibração salva; também oferece `inicializacaoCompleta()` e `operacaoBasicaDisponivel()`. |
 
-Os 25 exemplos em `examples/` seguem essa divisão: básicos e motores (01–04), ultrassom (05), linha/PID (06–13), cores (14–18), IMU (19–22), calibração Web/Serial (23–24) e pinagem alternativa (25).
+Os 26 exemplos em `examples/` seguem essa divisão: básicos e motores (01–04), ultrassom (05), linha/PID (06–13), cores (14–18), IMU (19–22), calibração Web/Serial (23–24), pinagem alternativa (25) e diagnóstico de inicialização (26).
 
 ## Limites de validação
 

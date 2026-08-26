@@ -201,6 +201,14 @@
 #undef setup
 #undef loop
 
+#define robo robo_26
+#define setup setup_26
+#define loop loop_26
+#include "../examples/26_TratamentoErros/26_TratamentoErros.ino"
+#undef robo
+#undef setup
+#undef loop
+
 void setup()
 {
 }

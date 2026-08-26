@@ -23,7 +23,12 @@ class RoboS3
 {
   public:
     RoboS3();
+
+    // Inicializa todos os modulos da PCB. Retorna true somente quando todos
+    // responderem; use status() ou printErrosInicializacao() em caso de false.
     bool begin();
+
+    // Deve ser chamado continuamente para atualizar IMU e calibracao Serial/Web.
     void atualizar();
 
     // Overrides devem ser chamados antes de begin().
@@ -44,6 +49,7 @@ class RoboS3
         config_.board.mpuAddress = address;
     }
 
+    // Motores: velocidades usam a faixa de -100 (re) a 100 (frente).
     void mover(int velocidadeEsquerda, int velocidadeDireita);
     void frente(int velocidade);
     void tras(int velocidade);
@@ -59,6 +65,7 @@ class RoboS3
     void configurarCompensacaoMotor(Motor motor, SentidoMotor sentido, float fator);
     void configurarMinimoMovimento(Motor motor, SentidoMotor sentido, uint8_t minimo);
 
+    // Linha: leituras brutas, calibradas, binarias e controle PID.
     LeituraLinha lerLinha();
     void lerLinhaBruta(uint16_t output[8]);
     void lerLinhaCalibrada(uint16_t output[8]);
@@ -74,9 +81,11 @@ class RoboS3
     float calcularPID(float error);
     void seguirLinha(int velocidadeBase);
 
+    // Ultrassom: distancia em centimetros e teste de limite.
     float distanciaCM();
     bool temObstaculo(float maximumCm);
 
+    // Cores: selecione o TCS34725 esquerdo ou direito em cada chamada.
     LeituraCor lerDadosCor(SensorCor sensor);
     RGB lerRGB(SensorCor sensor);
     HSV lerHSV(SensorCor sensor);
@@ -89,6 +98,7 @@ class RoboS3
     void setGanhoCor(SensorCor sensor, GanhoCor gain);
     void setTempoIntegracaoCor(SensorCor sensor, TempoIntegracaoCor time);
 
+    // IMU: roll/pitch absolutos e angulo Z relativo a ultima zeragem.
     LeituraIMU lerIMU();
     void atualizarIMU();
     float roll() const;
@@ -98,10 +108,12 @@ class RoboS3
     bool estaInclinado(float graus) const;
     void calibrarIMU(uint32_t durationMs = 3000);
 
+    // Persistencia: grava calibracoes na memoria nao volatil do ESP32.
     bool salvarCalibracao();
     bool carregarCalibracao();
     bool apagarCalibracao();
 
+    // Disponibilidade individual dos modulos depois de begin().
     bool linhaDisponivel() const
     {
         return status_.linha;
@@ -119,8 +131,18 @@ class RoboS3
     {
         return status_;
     }
+    bool inicializacaoCompleta() const
+    {
+        return status_.inicializacaoCompleta();
+    }
+    bool operacaoBasicaDisponivel() const
+    {
+        return status_.operacaoBasicaDisponivel();
+    }
 
+    // Diagnostico formatado para Serial ou qualquer objeto Print.
     void printStatus(Print& out = Serial) const;
+    void printErrosInicializacao(Print& out = Serial) const;
     void printLinha(Print& out = Serial) const;
     void printCores(Print& out = Serial);
     void printIMU(Print& out = Serial) const;

@@ -1,9 +1,9 @@
 {
   "name": "RoboS3",
   "version": "0.1.0",
-  "description": "Biblioteca educacional modular para a PCB RoboS3 ESP32-S3-N8R2",
+  "description": "Educational and modular library for the RoboS3 board with ESP32-S3",
   "keywords": ["robotica", "esp32-s3", "qtr", "l298n", "mpu6050", "tcs34725"],
-  "authors": [{"name": "Joao Augusto"}],
+  "authors": [{"name": "João Augusto Carvalho Araújo"}],
   "license": "MIT",
   "repository": {
     "type": "git",

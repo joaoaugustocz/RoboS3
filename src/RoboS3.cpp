@@ -76,7 +76,9 @@ bool RoboS3::begin()
     webCalibration_ = &web;
     web.begin();
 #endif
-    return status_.motores && status_.linha;
+    // A inicializacao de cada modulo e independente. Assim o programa pode
+    // consultar status() e decidir se consegue trabalhar com o hardware restante.
+    return status_.inicializacaoCompleta();
 }
 
 void RoboS3::atualizar()
@@ -500,15 +502,60 @@ bool RoboS3::corDisponivel(SensorCor s) const
 void RoboS3::printStatus(Print& out) const
 {
     out.println(F("[RoboS3] Status"));
-    const char* names[] = {"Motores",      "QTR",         "Ultrassom", "I2C0",      "I2C1",
-                           "TCS esquerdo", "TCS direito", "MPU6050",   "Calibracao"};
-    const bool values[] = {status_.motores,    status_.linha, status_.ultrassom,
-                           status_.i2c0,       status_.i2c1,  status_.corEsquerda,
-                           status_.corDireita, status_.imu,   status_.calibracaoCarregada};
-    for (uint8_t i = 0; i < 9; ++i)
+    const char* names[] = {"Motores",      "QTR",         "Ultrassom", "I2C0",
+                           "I2C1",         "TCS esquerdo", "TCS direito", "MPU6050"};
+    const bool values[] = {status_.motores,      status_.linha,       status_.ultrassom,
+                           status_.i2c0,         status_.i2c1,        status_.corEsquerda,
+                           status_.corDireita,   status_.imu};
+    for (uint8_t i = 0; i < 8; ++i)
     {
         out.print(values[i] ? F("[OK] ") : F("[ERRO] "));
         out.println(names[i]);
+    }
+    out.print(status_.calibracaoCarregada ? F("[OK] ") : F("[PADRAO] "));
+    out.println(F("Calibracao"));
+}
+
+void RoboS3::printErrosInicializacao(Print& out) const
+{
+    if (status_.inicializacaoCompleta())
+    {
+        out.println(F("[RoboS3] Nenhum erro de inicializacao."));
+        return;
+    }
+
+    out.println(F("[RoboS3] Erros de inicializacao:"));
+    if (!status_.motores)
+    {
+        out.println(F("- Motores: falha ao configurar a ponte H/PWM."));
+    }
+    if (!status_.linha)
+    {
+        out.println(F("- QTR: falha ao configurar os sensores de linha."));
+    }
+    if (!status_.ultrassom)
+    {
+        out.println(F("- Ultrassom: falha ao configurar TRIGGER/ECHO."));
+    }
+    if (!status_.i2c0)
+    {
+        out.println(F("- I2C0: falha ao iniciar SDA/SCL do barramento 0."));
+    }
+    if (!status_.i2c1)
+    {
+        out.println(F("- I2C1: falha ao iniciar SDA/SCL do barramento 1."));
+    }
+    if (!status_.corEsquerda)
+    {
+        out.println(F("- Cor esquerda: TCS34725 nao respondeu no I2C0."));
+    }
+    if (!status_.corDireita)
+    {
+        out.println(F("- Cor direita: TCS34725 nao respondeu no I2C1."));
+    }
+    if (!status_.imu)
+    {
+        out.println(F("- IMU: MPU6050 nao respondeu no I2C0/endereco configurado."));
     }
 }
 void RoboS3::printLinha(Print& out) const
