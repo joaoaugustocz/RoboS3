@@ -10,6 +10,33 @@ static float clampf(float value, float minimum, float maximum)
     return value < minimum ? minimum : (value > maximum ? maximum : value);
 }
 
+CalibracaoMotor mesclarCalibracaoMotor(const CalibracaoMotor& salva,
+                                       const CalibracaoMotor& explicita, uint8_t campos)
+{
+    CalibracaoMotor resultado = salva;
+    if (campos & AJUSTE_MOTOR_INVERSAO)
+    {
+        resultado.invertido = explicita.invertido;
+    }
+    if (campos & AJUSTE_MOTOR_COMPENSACAO_FRENTE)
+    {
+        resultado.compensacaoFrente = explicita.compensacaoFrente;
+    }
+    if (campos & AJUSTE_MOTOR_COMPENSACAO_TRAS)
+    {
+        resultado.compensacaoTras = explicita.compensacaoTras;
+    }
+    if (campos & AJUSTE_MOTOR_MINIMO_FRENTE)
+    {
+        resultado.minimoFrente = explicita.minimoFrente;
+    }
+    if (campos & AJUSTE_MOTOR_MINIMO_TRAS)
+    {
+        resultado.minimoTras = explicita.minimoTras;
+    }
+    return resultado;
+}
+
 int16_t clampCommand(int value)
 {
     return static_cast<int16_t>(value < -100 ? -100 : (value > 100 ? 100 : value));

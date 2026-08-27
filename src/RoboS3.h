@@ -336,10 +336,18 @@ class RoboS3
     /** @brief Aplica frenagem ativa aos dois motores. */
     void frear();
 
-    /** @brief Configura a inversao esquerda. @param invertido true para inverter. */
+    /**
+     * @brief Configura a inversao esquerda.
+     * @param invertido true para inverter.
+     * @note Um valor definido antes de begin() tem prioridade sobre a NVS.
+     */
     void inverterMotorEsquerdo(bool invertido);
 
-    /** @brief Configura a inversao direita. @param invertido true para inverter. */
+    /**
+     * @brief Configura a inversao direita.
+     * @param invertido true para inverter.
+     * @note Um valor definido antes de begin() tem prioridade sobre a NVS.
+     */
     void inverterMotorDireito(bool invertido);
 
     /**
@@ -361,6 +369,7 @@ class RoboS3
      * @brief Aplica um fator multiplicador a um motor e sentido.
      * @param motor MOTOR_ESQUERDO ou MOTOR_DIREITO.
      * @param sentido FRENTE ou TRAS. @param fator Multiplicador; 1.0 e neutro.
+     * @note Um valor definido antes de begin() tem prioridade sobre a NVS.
      */
     void configurarCompensacaoMotor(Motor motor, SentidoMotor sentido, float fator);
 
@@ -368,6 +377,7 @@ class RoboS3
      * @brief Define o menor comando capaz de movimentar um motor.
      * @param motor MOTOR_ESQUERDO ou MOTOR_DIREITO.
      * @param sentido FRENTE ou TRAS. @param minimo Valor de 0 a 100.
+     * @note Um valor definido antes de begin() tem prioridade sobre a NVS.
      */
     void configurarMinimoMovimento(Motor motor, SentidoMotor sentido, uint8_t minimo);
 
@@ -770,6 +780,7 @@ class RoboS3
     using AtualizadorCalibracao = void (*)(void* contexto);
     void* interfacesCalibracao_[2];
     AtualizadorCalibracao atualizadoresCalibracao_[2];
+    uint8_t ajustesMotorExplicitos_[2];
     bool begun_;
     bool anguloZInvertido_;
     bool sensoresCorTrocados_;

@@ -28,6 +28,20 @@ static void test_motor_pipeline()
     TEST_ASSERT_FALSE(motorOutput(50, c, 1023).forward);
 }
 
+static void test_explicit_motor_settings_override_nvs()
+{
+    const CalibracaoMotor saved{0.82f, 0.91f, 60, 23, false};
+    const CalibracaoMotor explicitValues{1.15f, 1.25f, 31, 32, true};
+    const CalibracaoMotor result =
+        mesclarCalibracaoMotor(saved, explicitValues, AJUSTE_MOTOR_INVERSAO);
+
+    TEST_ASSERT_TRUE(result.invertido);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, saved.compensacaoFrente, result.compensacaoFrente);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, saved.compensacaoTras, result.compensacaoTras);
+    TEST_ASSERT_EQUAL_UINT8(saved.minimoFrente, result.minimoFrente);
+    TEST_ASSERT_EQUAL_UINT8(saved.minimoTras, result.minimoTras);
+}
+
 static void test_line_encoding()
 {
     uint16_t values[8] = {0, 0, 0, 800, 900, 0, 0, 0};
@@ -63,6 +77,7 @@ static int runTests()
 {
     UNITY_BEGIN();
     RUN_TEST(test_motor_pipeline);
+    RUN_TEST(test_explicit_motor_settings_override_nvs);
     RUN_TEST(test_line_encoding);
     RUN_TEST(test_colors_and_circular_hue);
     return UNITY_END();

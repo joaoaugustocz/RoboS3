@@ -1,6 +1,6 @@
 {
   "name": "RoboS3",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Educational and modular library for the RoboS3 board with ESP32-S3",
   "keywords": ["robotica", "esp32-s3", "qtr", "l298n", "button", "debounce", "mpu6050", "tcs34725", "vl53l0x"],
   "authors": [{"name": "João Augusto Carvalho Araújo"}],

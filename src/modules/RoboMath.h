@@ -13,6 +13,24 @@ struct MotorOutput
     uint16_t duty; ///< Duty absoluto de 0 ate pwmMax.
 };
 
+/** @name Campos de calibracao de motor substituidos explicitamente pelo sketch. @{ */
+constexpr uint8_t AJUSTE_MOTOR_INVERSAO = 1U << 0;
+constexpr uint8_t AJUSTE_MOTOR_COMPENSACAO_FRENTE = 1U << 1;
+constexpr uint8_t AJUSTE_MOTOR_COMPENSACAO_TRAS = 1U << 2;
+constexpr uint8_t AJUSTE_MOTOR_MINIMO_FRENTE = 1U << 3;
+constexpr uint8_t AJUSTE_MOTOR_MINIMO_TRAS = 1U << 4;
+/** @} */
+
+/**
+ * @brief Mescla a calibracao salva com campos definidos explicitamente pelo sketch.
+ * @param salva Calibracao carregada da NVS.
+ * @param explicita Valores configurados por chamadas da API.
+ * @param campos Mascara formada pelas constantes AJUSTE_MOTOR_*.
+ * @return Calibracao efetiva, preservando da NVS os campos nao substituidos.
+ */
+CalibracaoMotor mesclarCalibracaoMotor(const CalibracaoMotor& salva,
+                                       const CalibracaoMotor& explicita, uint8_t campos);
+
 /** @param value Comando solicitado. @return value limitado a -100...100. */
 int16_t clampCommand(int value);
 /**

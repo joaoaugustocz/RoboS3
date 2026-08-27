@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1
+
+- correção da precedência da calibração dos motores: inversão, compensação e
+  mínimo definidos explicitamente pelo sketch agora prevalecem sobre o campo
+  correspondente carregado da NVS;
+- relatório de inicialização diferencia valores salvos de ajustes aplicados
+  pelo código e informa quais campos de cada motor foram substituídos;
+- teste de regressão para `inverterMotorDireito(true)` antes de `begin()` com
+  uma calibração diferente salva na NVS.
+
 ## 0.4.0
 
 - cadastro de até 12 botões digitais com `INPUT_PULLUP` ou teclas analógicas

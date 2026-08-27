@@ -11,7 +11,7 @@ RoboS3::RoboS3()
     : config_(RoboConfig::padrao()), status_{}, motors_{}, line_{}, pid_{},
       ultrasonic_{}, vl53_{}, colors_{}, imu_{}, storage_{}, buttons_{}, debug_{},
       interfacesCalibracao_{nullptr, nullptr}, atualizadoresCalibracao_{nullptr, nullptr},
-      begun_(false), anguloZInvertido_(false),
+      ajustesMotorExplicitos_{0, 0}, begun_(false), anguloZInvertido_(false),
       sensoresCorTrocados_(false)
 {
 }
@@ -466,6 +466,7 @@ void RoboS3::inverterMotorEsquerdo(bool value)
     c.invertido = value;
     config_.motorEsquerdo = c;
     motors_.setCalibration(MOTOR_ESQUERDO, c);
+    ajustesMotorExplicitos_[MOTOR_ESQUERDO] |= AJUSTE_MOTOR_INVERSAO;
 }
 void RoboS3::inverterMotorDireito(bool value)
 {
@@ -473,6 +474,7 @@ void RoboS3::inverterMotorDireito(bool value)
     c.invertido = value;
     config_.motorDireito = c;
     motors_.setCalibration(MOTOR_DIREITO, c);
+    ajustesMotorExplicitos_[MOTOR_DIREITO] |= AJUSTE_MOTOR_INVERSAO;
 }
 void RoboS3::inverterMotores(bool left, bool right)
 {
@@ -486,16 +488,19 @@ void RoboS3::trocarMotores(bool trocados)
 }
 void RoboS3::configurarCompensacaoMotor(Motor motor, SentidoMotor direction, float factor)
 {
-    auto c = motors_.calibration(motor);
+    const Motor motorNormalizado = motor == MOTOR_DIREITO ? MOTOR_DIREITO : MOTOR_ESQUERDO;
+    auto c = motors_.calibration(motorNormalizado);
     if (direction == FRENTE)
     {
         c.compensacaoFrente = factor;
+        ajustesMotorExplicitos_[motorNormalizado] |= AJUSTE_MOTOR_COMPENSACAO_FRENTE;
     }
     else
     {
         c.compensacaoTras = factor;
+        ajustesMotorExplicitos_[motorNormalizado] |= AJUSTE_MOTOR_COMPENSACAO_TRAS;
     }
-    if (motor == MOTOR_ESQUERDO)
+    if (motorNormalizado == MOTOR_ESQUERDO)
     {
         config_.motorEsquerdo = c;
     }
@@ -503,21 +508,24 @@ void RoboS3::configurarCompensacaoMotor(Motor motor, SentidoMotor direction, flo
     {
         config_.motorDireito = c;
     }
-    motors_.setCalibration(motor, c);
+    motors_.setCalibration(motorNormalizado, c);
 }
 void RoboS3::configurarMinimoMovimento(Motor motor, SentidoMotor direction, uint8_t minimum)
 {
-    auto c = motors_.calibration(motor);
+    const Motor motorNormalizado = motor == MOTOR_DIREITO ? MOTOR_DIREITO : MOTOR_ESQUERDO;
+    auto c = motors_.calibration(motorNormalizado);
     minimum = minimum > 100 ? 100 : minimum;
     if (direction == FRENTE)
     {
         c.minimoFrente = minimum;
+        ajustesMotorExplicitos_[motorNormalizado] |= AJUSTE_MOTOR_MINIMO_FRENTE;
     }
     else
     {
         c.minimoTras = minimum;
+        ajustesMotorExplicitos_[motorNormalizado] |= AJUSTE_MOTOR_MINIMO_TRAS;
     }
-    if (motor == MOTOR_ESQUERDO)
+    if (motorNormalizado == MOTOR_ESQUERDO)
     {
         config_.motorEsquerdo = c;
     }
@@ -525,7 +533,7 @@ void RoboS3::configurarMinimoMovimento(Motor motor, SentidoMotor direction, uint
     {
         config_.motorDireito = c;
     }
-    motors_.setCalibration(motor, c);
+    motors_.setCalibration(motorNormalizado, c);
 }
 
 LeituraLinha RoboS3::lerLinha()
@@ -916,10 +924,14 @@ void RoboS3::applyCalibration(const RoboCalibration& d)
 {
     line_.setCalibration(d.lineMinimum, d.lineMaximum);
     configurarLimiarLinha(d.lineThreshold);
-    motors_.setCalibration(MOTOR_ESQUERDO, d.leftMotor);
-    motors_.setCalibration(MOTOR_DIREITO, d.rightMotor);
-    config_.motorEsquerdo = d.leftMotor;
-    config_.motorDireito = d.rightMotor;
+    const CalibracaoMotor motorEsquerdo = mesclarCalibracaoMotor(
+        d.leftMotor, config_.motorEsquerdo, ajustesMotorExplicitos_[MOTOR_ESQUERDO]);
+    const CalibracaoMotor motorDireito = mesclarCalibracaoMotor(
+        d.rightMotor, config_.motorDireito, ajustesMotorExplicitos_[MOTOR_DIREITO]);
+    motors_.setCalibration(MOTOR_ESQUERDO, motorEsquerdo);
+    motors_.setCalibration(MOTOR_DIREITO, motorDireito);
+    config_.motorEsquerdo = motorEsquerdo;
+    config_.motorDireito = motorDireito;
     for (uint8_t s = 0; s < 2; ++s)
     {
         for (uint8_t c = 0; c < COR_TOTAL; ++c)
@@ -937,6 +949,8 @@ bool RoboS3::salvarCalibracao()
     if (salvou)
     {
         status_.calibracaoCarregada = true;
+        ajustesMotorExplicitos_[MOTOR_ESQUERDO] = 0;
+        ajustesMotorExplicitos_[MOTOR_DIREITO] = 0;
     }
     return salvou;
 }
@@ -962,6 +976,8 @@ bool RoboS3::apagarCalibracao()
     config_.motorDireito = padrao.motorDireito;
     motors_.setCalibration(MOTOR_ESQUERDO, padrao.motorEsquerdo);
     motors_.setCalibration(MOTOR_DIREITO, padrao.motorDireito);
+    ajustesMotorExplicitos_[MOTOR_ESQUERDO] = 0;
+    ajustesMotorExplicitos_[MOTOR_DIREITO] = 0;
     colors_[0].resetConfiguration();
     colors_[1].resetConfiguration();
     imu_.setOffsets({});
@@ -1205,8 +1221,16 @@ void RoboS3::printMotores(Print& out) const
 
 void RoboS3::printCalibracao(Print& out) const
 {
+    const bool possuiAjustesExplicitos =
+        ajustesMotorExplicitos_[MOTOR_ESQUERDO] != 0 ||
+        ajustesMotorExplicitos_[MOTOR_DIREITO] != 0;
     out.print(F("[RoboS3] Calibracao aplicada: "));
-    out.println(status_.calibracaoCarregada ? F("SALVA NA NVS") : F("VALORES PADRAO"));
+    out.print(status_.calibracaoCarregada ? F("SALVA NA NVS") : F("VALORES PADRAO"));
+    if (possuiAjustesExplicitos)
+    {
+        out.print(F(" + AJUSTES DO CODIGO"));
+    }
+    out.println();
 
     uint16_t minimos[8]{};
     uint16_t maximos[8]{};
@@ -1252,7 +1276,40 @@ void RoboS3::printCalibracao(Print& out) const
         out.print(F(" minimoTras="));
         out.print(motor.minimoTras);
         out.print(F(" invertido="));
-        out.println(motor.invertido ? F("sim") : F("nao"));
+        out.print(motor.invertido ? F("sim") : F("nao"));
+        const uint8_t ajustes = ajustesMotorExplicitos_[i];
+        out.print(F(" ajustesCodigo="));
+        if (ajustes == 0)
+        {
+            out.println(F("nenhum"));
+            continue;
+        }
+        bool separador = false;
+        if (ajustes & AJUSTE_MOTOR_INVERSAO)
+        {
+            out.print(F("inversao"));
+            separador = true;
+        }
+        if (ajustes & AJUSTE_MOTOR_COMPENSACAO_FRENTE)
+        {
+            out.print(separador ? F(",compFrente") : F("compFrente"));
+            separador = true;
+        }
+        if (ajustes & AJUSTE_MOTOR_COMPENSACAO_TRAS)
+        {
+            out.print(separador ? F(",compTras") : F("compTras"));
+            separador = true;
+        }
+        if (ajustes & AJUSTE_MOTOR_MINIMO_FRENTE)
+        {
+            out.print(separador ? F(",minimoFrente") : F("minimoFrente"));
+            separador = true;
+        }
+        if (ajustes & AJUSTE_MOTOR_MINIMO_TRAS)
+        {
+            out.print(separador ? F(",minimoTras") : F("minimoTras"));
+        }
+        out.println();
     }
     out.print(F("  Mapeamento: motoresTrocados="));
     out.print(motors_.swapped() ? F("sim") : F("nao"));

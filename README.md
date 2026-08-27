@@ -2,7 +2,7 @@
 
 Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**, baseada no **ESP32-S3-N8R2**. A API começa simples (`frente`, `parar`, `seguirLinha`) e preserva acesso a valores brutos, calibração, máscara, PID, RGB/HSV/HSL e IMU para o aluno evoluir sem trocar de biblioteca.
 
-**Versão estável:** 0.4.0 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
+**Versão estável:** 0.4.1 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
 
 ## Conteúdo
 
@@ -155,6 +155,15 @@ robo.trocarMotores(true); // somente se os conectores E/D foram trocados
 ```
 
 `inverterMotores()` corrige polaridade: um motor que deveria avançar está girando para trás. `trocarMotores()` corrige lado: o comando esquerdo está acionando fisicamente o motor direito; por segurança, a chamada para os motores. As quatro combinações esquerda/direita e frente/ré são independentes. Zero sempre produz duty zero.
+
+Configurações explícitas de inversão, compensação e mínimo feitas pelo sketch têm prioridade por campo sobre a NVS, inclusive quando são chamadas antes de `begin()`. Os demais campos continuam vindo da calibração salva. Por exemplo:
+
+```cpp
+robo.inverterMotorDireito(true);
+robo.begin();
+```
+
+Mesmo que a NVS tenha `invertido=false`, o relatório mostrará `SALVA NA NVS + AJUSTES DO CODIGO` e `Motor D: ... invertido=sim ajustesCodigo=inversao`. Depois de `salvarCalibracao()`, o valor efetivo passa a estar na própria NVS e deixa de ser marcado como ajuste temporário do código.
 
 ## Sensor de linha
 
@@ -539,11 +548,11 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | `motorEsquerdo(velocidade)` / `motorDireito(velocidade)` | Atualiza somente um motor e preserva o comando do outro. |
 | `parar()` | Desliga enables: parada livre (*coast*). |
 | `frear()` | Aplica frenagem ativa na ponte H. |
-| `inverterMotorEsquerdo(invertido)` / `inverterMotorDireito(invertido)` | Inverte eletricamente um motor. |
-| `inverterMotores(esquerdo, direito)` | Configura as duas inversões de uma vez. |
+| `void inverterMotorEsquerdo(bool invertido)` / `void inverterMotorDireito(bool invertido)` | Inverte eletricamente um motor; o valor explícito prevalece sobre a NVS. |
+| `void inverterMotores(bool esquerdo, bool direito)` | Configura as duas inversões de uma vez, com prioridade sobre a NVS. |
 | `void trocarMotores(bool trocados = true)` | Para os motores e troca o mapeamento lógico E/D; não altera a polaridade. |
-| `configurarMinimoMovimento(motor, sentido, minimo)` | Define PWM mínimo de partida `0…100` para cada motor e sentido. |
-| `configurarCompensacaoMotor(motor, sentido, fator)` | Aplica multiplicador para corrigir velocidades diferentes; `1.0` não altera. |
+| `void configurarMinimoMovimento(Motor motor, SentidoMotor sentido, uint8_t minimo)` | Define PWM mínimo `0…100`; o campo explícito prevalece sobre a NVS. |
+| `void configurarCompensacaoMotor(Motor motor, SentidoMotor sentido, float fator)` | Aplica multiplicador; `1.0` é neutro e o campo explícito prevalece sobre a NVS. |
 | `printMotores(out)` | Mostra comandos e calibração atual. |
 
 ### 3. Sensor de linha QTR e pista
