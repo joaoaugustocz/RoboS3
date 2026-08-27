@@ -11,13 +11,13 @@
 #include "modules/UltrasonicSensor.h"
 #include "modules/VL53L0XSensor.h"
 #include "modules/CalibrationStorage.h"
+#include "modules/ButtonManager.h"
 #include "debug/RoboDebug.h"
 
 namespace robos3
 {
 class SerialCalibration;
 class WebCalibration;
-class CalibrationManager;
 } // namespace robos3
 
 /**
@@ -41,8 +41,23 @@ class RoboS3
      */
     bool begin(Print& diagnostico = Serial);
 
-    /** @brief Atualiza IMU e interfaces de calibracao Serial/Web habilitadas. */
+    /** @brief Atualiza IMU, botoes e interfaces de calibracao iniciadas. */
     void atualizar();
+
+    /**
+     * @brief Inicia o console interativo de calibracao em uma porta serial.
+     * @param stream Porta ja inicializada pelo sketch, por exemplo Serial.
+     * @return true quando o robo ja passou por begin() e o console foi ativado.
+     * @note Nao exige ROBOS3_CALIBRATION_SERIAL nem define em platformio.ini.
+     */
+    bool iniciarCalibracaoSerial(Stream& stream = Serial);
+
+    /**
+     * @brief Inicia o ponto de acesso e o painel Web de calibracao.
+     * @return true quando o robo ja passou por begin() e o servidor foi iniciado.
+     * @note Nao exige ROBOS3_CALIBRATION_WEB nem define em platformio.ini.
+     */
+    bool iniciarCalibracaoWeb();
 
     /**
      * @brief Substitui os oito GPIOs e o emissor do QTR.
@@ -180,9 +195,76 @@ class RoboS3
 
     /**
      * @brief Desabilita o sensor cadastrado com o ID informado.
+     * @param id Numero de 0 a 254 usado no cadastro.
      * @return true quando o ID foi encontrado.
      */
     bool removerSensorDistancia(uint8_t id);
+
+    /**
+     * @brief Cadastra um botao digital ligado entre GPIO e GND.
+     * @param id ID unico de 0 a 254 usado nas consultas.
+     * @param pino GPIO digital do ESP32-S3, de 0 a 48, configurado como INPUT_PULLUP.
+     * @param debounceMs Tempo estavel para aceitar pressionar/soltar; padrao 30 ms.
+     * @return true quando cadastrado; false para ID/pino invalido ou duplicado,
+     * conflito de uso do GPIO ou limite de 12 botoes.
+     */
+    bool adicionarBotao(uint8_t id, uint8_t pino, uint16_t debounceMs = 30);
+
+    /**
+     * @brief Cadastra uma tecla de um conjunto resistivo em um unico GPIO ADC.
+     * @param id ID unico de 0 a 254 usado nas consultas.
+     * @param pino GPIO ADC do ESP32-S3, de 1 a 20; varias teclas podem compartilhar este pino.
+     * @param valorMinimo Inicio inclusivo da faixa ADC, de 0 a 1023.
+     * @param valorMaximo Fim inclusivo da faixa ADC, de 0 a 1023.
+     * @param debounceMs Tempo estavel para aceitar uma transicao; padrao 30 ms.
+     * @return true quando cadastrado; false para ID/faixa invalida ou sobreposta,
+     * conflito de uso do GPIO ou limite de 12 botoes.
+     */
+    bool adicionarBotaoAnalogico(uint8_t id, uint8_t pino, uint16_t valorMinimo,
+                                 uint16_t valorMaximo, uint16_t debounceMs = 30);
+
+    /** @brief Atualiza o debounce de todos os botoes; atualizar() ja chama este metodo. */
+    void atualizarBotoes();
+
+    /**
+     * @brief Consulta todos os dados de um botao sem consumir eventos.
+     * @param id ID informado no cadastro.
+     * @return Estado, ADC, tempos e eventos; valido=false para ID inexistente.
+     */
+    LeituraBotao lerBotao(uint8_t id);
+
+    /** @brief Consulta o estado estavel. @param id ID cadastrado. @return true enquanto pressionado. */
+    bool botaoPressionado(uint8_t id);
+
+    /**
+     * @brief Consome o evento de pressionamento.
+     * @param id ID cadastrado.
+     * @return true uma unica vez para cada transicao filtrada de solto para pressionado.
+     */
+    bool botaoFoiApertado(uint8_t id);
+
+    /**
+     * @brief Consome o evento de soltura.
+     * @param id ID cadastrado.
+     * @return true uma unica vez para cada transicao filtrada de pressionado para solto.
+     */
+    bool botaoFoiSolto(uint8_t id);
+
+    /**
+     * @brief Testa a duracao do pressionamento atual.
+     * @param id ID cadastrado. @param tempoMs Duracao minima em milissegundos.
+     * @return true enquanto o botao permanecer pressionado por pelo menos tempoMs.
+     */
+    bool botaoPressionadoPor(uint8_t id, uint32_t tempoMs);
+
+    /** @brief Verifica um cadastro. @param id ID consultado. @return true quando ele existe. */
+    bool botaoDisponivel(uint8_t id) const;
+
+    /** @brief Exclui um cadastro. @param id ID cadastrado. @return true quando removido. */
+    bool removerBotao(uint8_t id);
+
+    /** @brief Remove todos os cadastros e eventos de botoes. */
+    void limparBotoes();
 
     /**
      * @brief Atribui a MPU6050 a um dos dois barramentos I2C antes de begin().
@@ -266,6 +348,14 @@ class RoboS3
      * @param direito true para inverter o direito.
      */
     void inverterMotores(bool esquerdo, bool direito);
+
+    /**
+     * @brief Troca os canais fisicos dos motores esquerdo e direito.
+     * @param trocados true quando o motor esquerdo esta no conector direito e vice-versa.
+     * @note Para os motores e pode ser chamado antes ou depois de begin(). Nao inverte a polaridade;
+     * para isso, use inverterMotores().
+     */
+    void trocarMotores(bool trocados = true);
 
     /**
      * @brief Aplica um fator multiplicador a um motor e sentido.
@@ -504,6 +594,14 @@ class RoboS3
     /** @brief Configura a integracao de um TCS34725. @param sensor Lado. @param time Tempo desejado. */
     void setTempoIntegracaoCor(SensorCor sensor, TempoIntegracaoCor time);
 
+    /**
+     * @brief Troca a identificacao logica dos sensores de cor esquerdo e direito.
+     * @param trocados true quando os dois TCS34725 foram conectados em lados trocados.
+     * @return true quando a configuracao foi aceita; false se begin() ja foi chamado.
+     * @note Chame antes de definir barramentos, habilitar sensores ou executar begin().
+     */
+    bool trocarSensoresCor(bool trocados = true);
+
     /** @return Nova leitura com aceleracao, giro, temperatura e angulos. */
     LeituraIMU lerIMU();
 
@@ -541,8 +639,20 @@ class RoboS3
     /** @return true quando uma calibracao valida foi carregada e aplicada. */
     bool carregarCalibracao();
 
-    /** @return true quando a calibracao persistida foi apagada do NVS. */
+    /**
+     * @brief Apaga toda a calibracao salva e restaura os valores padrao em RAM.
+     * @return true quando o namespace NVS foi apagado; os valores em RAM sao
+     * restaurados mesmo se a operacao de flash falhar.
+     * @note Restaura QTR, limiar 500, motores, cores e offsets da IMU. Pinagem,
+     * troca de lados e cadastro de sensores de distancia nao sao calibracao.
+     */
     bool apagarCalibracao();
+
+    /** @return O mesmo resultado de apagarCalibracao(); alias com nome explicito. */
+    bool resetarCalibracao()
+    {
+        return apagarCalibracao();
+    }
 
     /** @return true quando o modulo QTR iniciou corretamente. */
     bool linhaDisponivel() const
@@ -619,6 +729,13 @@ class RoboS3
     /** @brief Imprime comandos e calibracoes dos motores. @param out Destino Print. */
     void printMotores(Print& out = Serial) const;
 
+    /**
+     * @brief Imprime a origem e todos os valores de calibracao atualmente aplicados.
+     * @param out Destino Print; Serial por padrao.
+     * @note begin() chama este metodo automaticamente depois de carregar a NVS.
+     */
+    void printCalibracao(Print& out = Serial) const;
+
     /** @brief Define o nivel de diagnostico. @param level Um valor DebugLevel. */
     void setDebugLevel(DebugLevel level)
     {
@@ -632,6 +749,9 @@ class RoboS3
     const robos3::ColorSensor& color(SensorCor sensor) const;
     TwoWire& wire(BarramentoI2C barramento);
     bool i2cDisponivel(BarramentoI2C barramento) const;
+    uint8_t indiceCorFisica(SensorCor sensor) const;
+    BarramentoI2C barramentoCor(SensorCor sensor) const;
+    bool corHabilitada(SensorCor sensor) const;
     robos3::RoboCalibration makeCalibration() const;
     void applyCalibration(const robos3::RoboCalibration& data);
 
@@ -645,16 +765,12 @@ class RoboS3
     robos3::ColorSensor colors_[2];
     robos3::IMUSensor imu_;
     robos3::CalibrationStorage storage_;
+    robos3::ButtonManager buttons_;
     robos3::RoboDebug debug_;
+    using AtualizadorCalibracao = void (*)(void* contexto);
+    void* interfacesCalibracao_[2];
+    AtualizadorCalibracao atualizadoresCalibracao_[2];
     bool begun_;
     bool anguloZInvertido_;
-#ifdef ROBOS3_CALIBRATION_SERIAL
-    robos3::SerialCalibration* serialCalibration_;
-#endif
-#ifdef ROBOS3_CALIBRATION_WEB
-    robos3::WebCalibration* webCalibration_;
-#endif
-#if defined(ROBOS3_CALIBRATION_WEB) || defined(ROBOS3_CALIBRATION_SERIAL)
-    robos3::CalibrationManager* calibrationManager_;
-#endif
+    bool sensoresCorTrocados_;
 };

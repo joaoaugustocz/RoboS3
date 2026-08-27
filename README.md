@@ -11,12 +11,13 @@ Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**
 - [Primeiro programa](#primeiro-programa)
 - [Motores, linha e PID](#motores-e-l298n)
 - [Sensores de distância, cores e IMU](#sensores-de-distância)
+- [Botões digitais e analógicos](#botões-digitais-e-analógicos)
 - [Calibração e debug](#persistência)
 - [Referência completa da API](#referência-completa-da-api)
 - [Exemplos](#exemplos-incluídos)
 - [Limites de validação](#limites-de-validação)
 
-> Estado do hardware: QTR, ponte H e os dois conectores ultrassônicos foram revisados conforme a configuração informada para a placa. A pinagem provisória do I2C0 ainda colide com QTR e ULTRA2, conforme detalhado abaixo.
+> Estado do hardware: QTR, ponte H, dois barramentos I2C e os dois conectores ultrassônicos foram revisados conforme a configuração informada para a placa.
 
 ## Hardware e pinagem
 
@@ -27,8 +28,8 @@ Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**
 | Emitter QTR | não conectado | nenhuma rede CTRL/LEDON nas imagens |
 | ULTRA1 TRIG/ECHO | 17 / 18 | pinagem informada |
 | ULTRA2 TRIG/ECHO | 16 / 42 | pinagem informada |
-| I2C0 SDA/SCL | 1 / 42 | provisório; SDA conflita com QTR S1 e SCL com ECHO do ULTRA2 |
-| I2C1 SDA/SCL | 41 / 40 | sem colisão conhecida nesta revisão |
+| I2C0 SDA/SCL | 47 / 48 | pinagem informada |
+| I2C1 SDA/SCL | 39 / 40 | pinagem informada |
 | TCS esquerdo | I2C0, endereço 0x29 | padrão configurável antes de `begin()` |
 | TCS direito | I2C1, endereço 0x29 | padrão configurável antes de `begin()` |
 | VL53L0X #1/#2 | I2C configurável, endereço inicial 0x29 | opcionais; desativados por padrão |
@@ -37,7 +38,7 @@ Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**
 | L298N ENA/IN1/IN2 | 14 / 15 / 11 | revisão informada da ponte H |
 | L298N ENB/IN3/IN4 | 21 / 12 / 13 | revisão informada da ponte H |
 
-**Colisões a corrigir:** um GPIO só pode exercer uma função elétrica por vez. Não use o I2C0 provisório em GPIO1/42 simultaneamente com QTR S1 e ULTRA2. Remapeie-o com `definePinsI2C0()` antes de `begin()` quando esses módulos forem usados juntos. O ECHO de cada HC-SR04 precisa chegar ao ESP32 em **3,3 V**; confirme divisor ou level shifter na placa.
+Um GPIO só pode exercer uma função elétrica por vez. Ao adicionar periféricos, não reutilize os pinos da tabela. O ECHO de cada HC-SR04 precisa chegar ao ESP32 em **3,3 V**; confirme divisor ou *level shifter* na placa.
 
 ## Instalação
 
@@ -70,18 +71,18 @@ O ambiente validado usa Arduino-ESP32 3.3.7 e a API LEDC por pino. O `platformio
 
 ## Ambientes PlatformIO
 
-Os ambientes separam firmware de uso, interfaces opcionais e verificações de integração. O firmware comum não incorpora Wi-Fi nem calibração; cada exemplo é verificado com as mesmas dependências do robô.
+Os ambientes separam upload, atalhos de calibração e verificações de integração. Eles existem principalmente para desenvolvimento da própria biblioteca; em um projeto do aluno basta normalmente um único ambiente. Desde a versão 0.4.0, Serial e Web também podem ser iniciadas por métodos no sketch, sem flags.
 
 | Ambiente | Quando usar | O que compila | Por que existe |
 |---|---|---|---|
-| `robos3` | Uso normal e upload do robô | Núcleo e periféricos | É o padrão, menor e sem interface de calibração. |
-| `robos3_serial` | Calibrar pela USB/Serial | Núcleo + console Serial | Mantém a ferramenta de bancada fora do firmware final. |
-| `robos3_web` | Calibrar por Wi-Fi | Núcleo + SoftAP/WebServer | Inclui o dashboard Web e consome mais memória. |
-| `robos3_calibration` | Usar ou validar Web e Serial juntas | Núcleo + ambas as interfaces | Permite bancada completa e cobre a integração. |
+| `robos3` | Uso normal e upload do robô | Núcleo e periféricos | É o padrão e não inicia nenhuma interface de calibração automaticamente. |
+| `robos3_serial` | Testar inicialização automática Serial | Núcleo + chamada automática do console | Mantém compatibilidade com projetos que já usam a macro. |
+| `robos3_web` | Testar inicialização automática Web | Núcleo + chamada automática do painel | Mantém compatibilidade com projetos que já usam a macro. |
+| `robos3_calibration` | Validar Web e Serial juntas | Núcleo + ambas iniciadas automaticamente | Cobre a integração completa em CI/bancada. |
 | `examples` | Base de compilação de um exemplo isolado | Biblioteca sem checagem agregada | Evita misturar sketch de exemplo ao firmware interno. |
-| `example_serial` | Compilar `24_CalibracaoSerial` isoladamente | Exemplo + Serial | Propaga a macro aos `.cpp` da biblioteca. |
-| `example_web` | Compilar `23_CalibracaoWeb` isoladamente | Exemplo + Web | Propaga a macro aos `.cpp` da biblioteca. |
-| `examples_all` | Verificação de desenvolvimento/CI | Os 30 exemplos, isolados internamente | Detecta quebra de API sem gerar firmware para upload. |
+| `example_serial` | Compilar `24_CalibracaoSerial` isoladamente | Exemplo do console | Verifica o fluxo didático separado. |
+| `example_web` | Compilar `23_CalibracaoWeb` isoladamente | Exemplo do painel | Verifica o fluxo didático separado. |
+| `examples_all` | Verificação de desenvolvimento/CI | Os 31 exemplos, isolados internamente | Detecta quebra de API sem gerar firmware para upload. |
 | `unit` | Testar PWM, máscara e HSV | Unity + `RoboMath` | Separa cálculos determinísticos do hardware. |
 | `native` | Executar matemática em PC com toolchain nativo | Apenas matemática pura | É opcional; não é necessário no ESP32-S3. |
 
@@ -119,6 +120,8 @@ void loop()
 
 `begin()` deixa os motores parados e tenta inicializar cada módulo independentemente. Ele retorna `true` somente quando todos os módulos previstos na PCB respondem. Quando algo falha, o próprio `begin()` imprime na `Serial` qual módulo não respondeu e uma indicação do que verificar. Inicie a `Serial` antes dele para visualizar essas mensagens.
 
+Em toda inicialização, `begin()` também imprime se a calibração veio da NVS ou dos valores padrão e lista QTR, limiar, compensações/inversões dos motores, mapeamentos E/D, faixas ativas dos sensores de cor e offsets da IMU. Use `robo.printCalibracao()` para repetir esse relatório durante o diagnóstico.
+
 ### Serial e velocidade de comunicação
 
 `robo.begin()` **não chama `Serial.begin()`**, não escolhe baud rate e não trava a velocidade da porta. O sketch continua responsável pela configuração:
@@ -148,9 +151,10 @@ Pipeline: comando → sentido → módulo → PWM mínimo → compensação → 
 robo.configurarMinimoMovimento(MOTOR_ESQUERDO, FRENTE, 18);
 robo.configurarCompensacaoMotor(MOTOR_DIREITO, FRENTE, 0.96f);
 robo.inverterMotores(false, true);
+robo.trocarMotores(true); // somente se os conectores E/D foram trocados
 ```
 
-As quatro combinações esquerda/direita e frente/ré são independentes. Zero sempre produz duty zero.
+`inverterMotores()` corrige polaridade: um motor que deveria avançar está girando para trás. `trocarMotores()` corrige lado: o comando esquerdo está acionando fisicamente o motor direito; por segurança, a chamada para os motores. As quatro combinações esquerda/direita e frente/ré são independentes. Zero sempre produz duty zero.
 
 ## Sensor de linha
 
@@ -322,9 +326,49 @@ TCS34725 e VL53L0X iniciam no endereço `0x29`. Sem multiplexador ou isolamento 
 
 A biblioteca Pololu permite selecionar `Wire` ou `Wire1`, e o driver RoboS3 usa aquisição contínua com timeout configurável. A chamada de leitura do VL53L0X é bloqueante até chegar uma medida ou expirar o timeout. O HC-SR04 também é bloqueante durante o tempo de eco; evite consultar sensores de distância mais vezes do que o controle realmente necessita.
 
+## Botões digitais e analógicos
+
+É possível cadastrar até 12 botões com IDs de `0` a `254`. A biblioteca mantém estado estável, eventos de apertar/soltar, duração do pressionamento e contador, sem alocação dinâmica. `robo.atualizar()` já processa o debounce; chame-a frequentemente no `loop()`.
+
+### Botão digital com pull-up
+
+Ligue um terminal do botão ao GPIO e o outro ao GND. Não é necessário resistor externo: `adicionarBotao()` configura `INPUT_PULLUP`, portanto solto é `HIGH` e pressionado é `LOW`.
+
+```cpp
+robo.adicionarBotao(1, 35, 30); // ID 1, GPIO35, debounce de 30 ms
+
+if (robo.botaoFoiApertado(1))
+{
+    // Executado uma vez por aperto.
+}
+```
+
+### Vários botões em uma entrada analógica
+
+Um teclado resistivo produz um valor ADC diferente para cada tecla. Cadastre todas no mesmo pino, com faixas inclusivas que não se sobreponham. A RoboS3 usa ADC de 10 bits (`0…1023`). Os valores dependem dos resistores e da alimentação: primeiro observe `robo.lerBotao(id).valorBruto`, depois deixe margem entre as faixas.
+
+```cpp
+robo.adicionarBotaoAnalogico(2, 4, 120, 220, 30);
+robo.adicionarBotaoAnalogico(3, 4, 430, 540, 30);
+```
+
+Com a pinagem padrão desta placa, os GPIOs já ocupados são `1, 2, 3, 5–9, 11–18, 21, 39, 40, 42, 47 e 48`. Recomendações conservadoras:
+
+| Uso | GPIOs sugeridos | Observações |
+|---|---|---|
+| Entrada analógica | **4 ou 10** | São ADC e não estão usados pela configuração padrão. Confirme se o GPIO escolhido está exposto no conector da sua revisão. |
+| Entrada digital | **4, 10, 35, 36, 37, 38 ou 41** | Não conflitam com a configuração padrão informada. |
+| Digital somente se UART0 estiver livre | 43 ou 44 | Normalmente associados a TX/RX; evite se usar essa UART. |
+
+Evite GPIO0, GPIO3, GPIO45 e GPIO46 por serem pinos de *strapping*; evite GPIO19/20 quando usar USB nativo; e não use GPIO26–32, normalmente ligados à flash/PSRAM do módulo N8R2. Um cadastro retorna `false` em caso de ID/pino inválido ou duplicado, faixa analógica inválida/sobreposta, mistura digital/analógica no mesmo pino ou limite de 12 atingido.
+
+`botaoPressionado(id)` permanece `true` enquanto pressionado. `botaoFoiApertado(id)` e `botaoFoiSolto(id)` consomem o evento e retornam `true` somente uma vez. `botaoPressionadoPor(id, ms)` testa um pressionamento longo. `lerBotao(id)` não consome eventos e retorna todos os campos. Veja `31_Botoes`.
+
 ## Cores: RGB, HSV e HSL
 
 Dois TCS34725 de endereço `0x29` funcionam simultaneamente desde que estejam em barramentos separados. Por padrão, o esquerdo usa I2C0 (`Wire`) e o direito I2C1 (`Wire1`), mas essa atribuição é configurável antes de `begin()`. Uma aquisição gera raw, RGB 0…255, HSV/HSL, canal clear, classificação e timestamp.
+
+Se os conectores esquerdo e direito foram montados ao contrário, chame `robo.trocarSensoresCor(true)` **antes** de configurar os barramentos e antes de `begin()`. O método retorna `false` depois da inicialização para evitar alterar silenciosamente o significado das calibrações em uso.
 
 ```cpp
 LeituraCor e = robo.lerDadosCor(COR_ESQUERDA);
@@ -370,18 +414,20 @@ completou = robo.girarAngulo(40, -90);       // 90 graus para esquerda
 
 `salvarCalibracao()`, `carregarCalibracao()` e `apagarCalibracao()` usam Preferences/NVS no namespace `robos3`. O blob contém magic, versão de schema, tamanho e checksum. A flash só é escrita por comando explícito.
 
+`apagarCalibracao()` (ou o alias `resetarCalibracao()`) apaga o blob da NVS e restaura imediatamente, na RAM, os limites do QTR, limiar da linha, motores, faixas/ganho/integração de cor e offsets da IMU. Retorna `true` quando a remoção da NVS foi concluída; os padrões em RAM são restaurados mesmo se não existia calibração salva.
+
 ## Calibração Serial e Web
 
-Ative por `build_flags`, pois macros definidas apenas dentro do sketch não são propagadas aos `.cpp` de uma biblioteca Arduino:
+Prefira ativar diretamente no sketch, depois de `robo.begin()`:
 
-```ini
-build_flags = -DROBOS3_CALIBRATION_SERIAL
-; ou -DROBOS3_CALIBRATION_WEB
+```cpp
+robo.iniciarCalibracaoSerial(Serial); // usa a porta ja iniciada pelo sketch
+robo.iniciarCalibracaoWeb();          // cria o ponto de acesso e o painel
 ```
 
-Ambos podem ser usados juntos e compartilham `CalibrationManager`. No `loop`, chame `robo.atualizar()`.
+Não é necessário alterar `platformio.ini` nem usar `#define`. As macros `ROBOS3_CALIBRATION_SERIAL` e `ROBOS3_CALIBRATION_WEB` continuam disponíveis apenas como atalhos de inicialização automática para projetos antigos. Um `#define` escrito somente no `.ino` não configura os outros `.cpp` da biblioteca, por isso o método público é a solução portátil. Ambas as interfaces podem ser usadas juntas. No `loop`, chame `robo.atualizar()`.
 
-Serial opera a 115200 e oferece `help`, `status`, linha, motores, cores, IMU, `save`, `load` e `reset`, com parser de buffer fixo. Web cria `RoboS3-Calibracao-XXXX`, serve dashboard responsivo e APIs `/api/status`, `/api/line`, `/api/motors`, `/api/colors` e `/api/imu`. Testes de motor exigem ação explícita e param/freiam automaticamente em até 2 s se não forem renovados.
+O console Serial opera na velocidade escolhida pelo próprio `Serial.begin(...)` e oferece `help`, `status`, linha, motores, cores, IMU, `save`, `load` e `reset`, com parser de buffer fixo. Web cria `RoboS3-Calibracao-XXXX`, serve dashboard responsivo e APIs `/api/status`, `/api/line`, `/api/motors`, `/api/colors` e `/api/imu`. Testes de motor exigem ação explícita e param/freiam automaticamente em até 2 s se não forem renovados.
 
 ## Debug
 
@@ -446,13 +492,29 @@ bool exemplo(uint16_t valor);
 
 Use `@return` em funções não `void`, documente cada `@param`, declare unidades (`ms`, `cm`, graus, porcentagem) e informe quando uma função faz aquisição física, altera histórico, grava flash ou bloqueia o programa.
 
+### Tipos, faixas e convenções dos parâmetros
+
+| Parâmetro | Tipo C++ | Faixa/unidade e tratamento |
+|---|---|---|
+| velocidades de motor | `int` | `-100…100`; valores externos são limitados. Positivo avança, negativo recua. Em métodos de sentido fixo é usado o módulo. |
+| `id` de distância/botão | `uint8_t` | `0…254`; `255` é reservado como inválido. IDs devem ser únicos dentro de cada gerenciador. |
+| GPIO (`pino`, `sda`, `scl`, `trigger`, `echo`) | `uint8_t` | Número físico `0…48`; a validade elétrica depende do ESP32-S3 e da placa. `255` só é aceito como ausência do emitter QTR. |
+| tempo/debounce/timeout | `uint16_t` ou `uint32_t` | Milissegundos. O tipo exato aparece na assinatura de cada método; contagens usam aritmética segura com `millis()`. |
+| QTR calibrado/limiar | `uint16_t` | `0…1000`; posição da linha `0…7000`, centro `3500`. |
+| ADC de botão | `uint16_t` | `0…1023`, limites inclusivos e não sobrepostos no mesmo pino. |
+| ângulo, distância, ganhos e cores | `float` | Ângulo em graus; distância em cm; HSV/HSL: H `0…360`, S/V/L `0…100`; compensação de motor `1.0f` é neutra. |
+| seletores | `enum` | Use as constantes documentadas, como `MOTOR_ESQUERDO`, `COR_DIREITA` e `BARRAMENTO_I2C1`, em vez de números soltos. |
+| saída textual | `Print&`/`Stream&` | `Serial` por padrão; o sketch deve inicializar a porta e escolher sua velocidade. |
+
 ### 1. Sistema, status e depuração
 
 | Método | Aplicação |
 |---|---|
 | `RoboS3()` | Cria o objeto com a pinagem padrão da PCB. |
 | `begin(diagnostico)` | Inicializa todos os módulos. Retorna `true` somente se todos responderam e imprime automaticamente as falhas no `Print` recebido, `Serial` por padrão. |
-| `atualizar()` | Atualiza IMU e interfaces Serial/Web habilitadas. Chame continuamente no `loop()`. |
+| `atualizar()` | Atualiza IMU, debounce dos botões e interfaces Serial/Web iniciadas. Chame continuamente no `loop()`. |
+| `bool iniciarCalibracaoSerial(Stream& stream = Serial)` | Ativa o console na porta já inicializada; retorna `false` se chamado antes de `begin()`. |
+| `bool iniciarCalibracaoWeb()` | Ativa SoftAP/painel sem build flag; retorna `false` antes de `begin()` ou se o servidor falhar. |
 | `status()` | Retorna `const StatusRobo&` com o estado de todos os módulos. |
 | `inicializacaoCompleta()` | Retorna `true` quando todos os módulos previstos responderam ao `begin()`. |
 | `operacaoBasicaDisponivel()` | Retorna `true` quando motores e QTR estão disponíveis para um seguidor simples. |
@@ -461,6 +523,7 @@ Use `@return` em funções não `void`, documente cada `@param`, declare unidade
 | `corDisponivel(sensor)` | Informa se o TCS34725 de `COR_ESQUERDA` ou `COR_DIREITA` está disponível. |
 | `printStatus(out)` | Imprime o estado dos módulos; o destino padrão é `Serial`. |
 | `printErrosInicializacao(out)` | Imprime somente os módulos que falharam e uma indicação do ponto a verificar. |
+| `void printCalibracao(Print& out = Serial) const` | Imprime origem NVS/padrão e valores QTR, motores, cores e offsets IMU; `begin()` já chama automaticamente. |
 | `setDebugLevel(nivel)` | Seleciona `DEBUG_OFF`, `DEBUG_ERROR`, `DEBUG_INFO` ou `DEBUG_VERBOSE`. |
 
 ### 2. Motores e ponte H L298N
@@ -478,6 +541,7 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | `frear()` | Aplica frenagem ativa na ponte H. |
 | `inverterMotorEsquerdo(invertido)` / `inverterMotorDireito(invertido)` | Inverte eletricamente um motor. |
 | `inverterMotores(esquerdo, direito)` | Configura as duas inversões de uma vez. |
+| `void trocarMotores(bool trocados = true)` | Para os motores e troca o mapeamento lógico E/D; não altera a polaridade. |
 | `configurarMinimoMovimento(motor, sentido, minimo)` | Define PWM mínimo de partida `0…100` para cada motor e sentido. |
 | `configurarCompensacaoMotor(motor, sentido, fator)` | Aplica multiplicador para corrigir velocidades diferentes; `1.0` não altera. |
 | `printMotores(out)` | Mostra comandos e calibração atual. |
@@ -530,7 +594,22 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | `temObstaculo(id, maximoCm)` | Testa o limite usando o sensor identificado. |
 | `distanciaDisponivel(id)` | Informa se o sensor cadastrado respondeu ao `begin()`. |
 
-### 6. Cores: dois TCS34725, RGB, HSV e HSL
+### 6. Botões digitais e teclado analógico
+
+| Assinatura C++ | Parâmetros, retorno e aplicação |
+|---|---|
+| `bool adicionarBotao(uint8_t id, uint8_t pino, uint16_t debounceMs = 30)` | Digital entre GPIO e GND com `INPUT_PULLUP`; ID `0…254`, debounce em ms. Retorna `false` para conflito ou limite. |
+| `bool adicionarBotaoAnalogico(uint8_t id, uint8_t pino, uint16_t valorMinimo, uint16_t valorMaximo, uint16_t debounceMs = 30)` | Cadastra uma faixa ADC inclusiva `0…1023`; várias teclas podem compartilhar o pino com faixas separadas. |
+| `void atualizarBotoes()` | Atualiza o debounce; é desnecessário se `atualizar()` já é chamado no `loop()`. |
+| `LeituraBotao lerBotao(uint8_t id)` | Retorna estado, valor bruto, eventos, tempos e contador sem consumir eventos; `valido=false` para ID ausente. |
+| `bool botaoPressionado(uint8_t id)` | `true` enquanto o estado filtrado permanecer pressionado. |
+| `bool botaoFoiApertado(uint8_t id)` | Consome e retorna uma vez cada transição estável de solto para pressionado. |
+| `bool botaoFoiSolto(uint8_t id)` | Consome e retorna uma vez cada transição estável de pressionado para solto. |
+| `bool botaoPressionadoPor(uint8_t id, uint32_t tempoMs)` | Testa se o pressionamento atual já atingiu a duração informada. |
+| `bool botaoDisponivel(uint8_t id) const` | Informa se o ID está cadastrado. |
+| `bool removerBotao(uint8_t id)` / `void limparBotoes()` | Remove um cadastro ou todos os 12 slots. |
+
+### 7. Cores: dois TCS34725, RGB, HSV e HSL
 
 Use `COR_ESQUERDA` ou `COR_DIREITA` para selecionar o módulo.
 
@@ -544,9 +623,10 @@ Use `COR_ESQUERDA` ou `COR_DIREITA` para selecionar o módulo.
 | `calibrarCor(sensor, cor, amostras)` | Coleta faixa HSV para a cor sob o sensor; padrão 30 amostras. |
 | `setGanhoCor(sensor, ganho)` | Seleciona `GANHO_1X`, `GANHO_4X`, `GANHO_16X` ou `GANHO_60X`. |
 | `setTempoIntegracaoCor(sensor, tempo)` | Seleciona integração de 2,4; 24; 50; 101; 154 ou 600 ms. |
+| `bool trocarSensoresCor(bool trocados = true)` | Troca os lados lógicos antes de `begin()`; retorna `false` se o robô já iniciou. |
 | `printCores(out)` | Imprime os dois sensores. |
 
-### 7. Orientação e inclinação (MPU6050)
+### 8. Orientação e inclinação (MPU6050)
 
 Use `atualizar()` no `loop()` ou `atualizarIMU()` antes de consultar ângulos. O yaw/Z é relativo, não uma bússola.
 
@@ -562,15 +642,15 @@ Use `atualizar()` no `loop()` ou `atualizarIMU()` antes de consultar ângulos. O
 | `calibrarIMU(ms)` | Para motores e calibra offsets com o robô imóvel; padrão 3000 ms. É bloqueante. |
 | `printIMU(out)` | Imprime dados atuais da IMU. |
 
-### 8. Persistência de calibração
+### 9. Persistência de calibração
 
 | Método | Aplicação |
 |---|---|
 | `salvarCalibracao()` | Salva limites QTR, calibração dos motores, faixas de cor e offsets da IMU no NVS. |
 | `carregarCalibracao()` | Carrega e aplica os valores gravados; retorna `false` se não houver dado válido. |
-| `apagarCalibracao()` | Remove a calibração persistida. |
+| `bool apagarCalibracao()` / `bool resetarCalibracao()` | Apaga a NVS e restaura os padrões em RAM; retorna o resultado da remoção persistente. |
 
-### 9. Configuração de hardware e pinagem
+### 10. Configuração de hardware e pinagem
 
 Chame estes métodos somente antes de `begin()`.
 
@@ -591,7 +671,7 @@ Chame estes métodos somente antes de `begin()`.
 | `definirBarramentoIMU(barramento)` | Atribui a MPU6050 a I2C0 ou I2C1. Ela pode compartilhar o barramento com um TCS. |
 | `configurarIMU(endereco)` | Define endereço I2C MPU6050, normalmente `0x68`. |
 
-### 10. Tipos retornados
+### 11. Tipos retornados
 
 | Tipo | Campos ou valores principais |
 |---|---|
@@ -606,6 +686,7 @@ Chame estes métodos somente antes de `begin()`.
 | `LeituraIMU` | `accX/Y/Z`, `gyroX/Y/Z`, `roll`, `pitch`, `yawRelativo`, `temperatura`, `valida`, `timestampMs`. |
 | `SensorDistancia` / `TipoSensorDistancia` | Slots físicos e tecnologias `SENSOR_ULTRASSONICO`/`SENSOR_TOF_VL53L0X`. |
 | `LeituraDistancia` | ID, slot, tecnologia, centímetros, milímetros, validade, timeout e timestamp. |
+| `TipoBotao` / `LeituraBotao` | Digital pull-up ou analógico; ID, pino, valor bruto, estado, eventos, durações e contador. |
 | `StatusRobo` | Flags de disponibilidade dos módulos e da calibração salva; também oferece `inicializacaoCompleta()` e `operacaoBasicaDisponivel()`. |
 
 #### Unidades e validade dos campos
@@ -637,6 +718,12 @@ Chame estes métodos somente antes de `begin()`.
 | `LeituraDistancia.centimetros/milimetros` | cm / mm | `NAN`/zero quando `valida` é false. |
 | `LeituraDistancia.id/sensor/tipo` | identificadores | Separam o nome escolhido, o slot físico e a tecnologia usada. |
 | `LeituraDistancia.valida/timeout` | booleanos | `timeout` indica especificamente expiração do VL53L0X. |
+| `LeituraBotao.id/pino/tipo` | identificadores | Repetem o cadastro; confira `valido` antes dos demais campos. |
+| `LeituraBotao.valorBruto` | digital `0/1` ou ADC `0…1023` | Permite diagnosticar ligação e escolher faixas do teclado resistivo. |
+| `LeituraBotao.pressionado` | booleano | Estado estável depois do debounce. |
+| `LeituraBotao.eventoApertado/eventoSolto` | booleanos | Apenas indicam evento pendente; a leitura da estrutura não o consome. |
+| `LeituraBotao.duracaoPressionadoMs/duracaoUltimoApertoMs` | milissegundos | Duração atual ou duração completa do último aperto. |
+| `LeituraBotao.quantidadeApertos` | `uint32_t` | Total de transições filtradas para pressionado desde o cadastro. |
 | `StatusRobo.motores/linha/ultrassom/ultrassom2` | booleano | Disponibilidade dos módulos sem I2C; `ultrassom` é ULTRA1. |
 | `StatusRobo.i2c0/i2c1` | booleano | Resultado da inicialização de cada controlador I2C. |
 | `StatusRobo.corEsquerda/corDireita/imu/vl53_1/vl53_2` | booleano | Indica quais dispositivos responderam ao `begin()`. |
@@ -646,7 +733,7 @@ Chame estes métodos somente antes de `begin()`.
 
 ## Exemplos incluídos
 
-Os 30 sketches em [`examples/`](examples) seguem uma progressão didática:
+Os 31 sketches em [`examples/`](examples) seguem uma progressão didática:
 
 | Faixa | Aplicação |
 |---|---|
@@ -659,6 +746,7 @@ Os 30 sketches em [`examples/`](examples) seguem uma progressão didática:
 | 25–28 | pinagem alternativa, erros do `begin()`, histórico e cor manual |
 | 29 | esqueleto OBR: calibração, obstáculo, padrões P/B, PID, verde, T, encruzilhada e giros de 90° |
 | 30 | cadastro por ID e leitura unificada de dois ultrassons e VL53L0X |
+| 31 | botões digitais e teclado resistivo analógico com debounce e eventos |
 
 ## Limites de validação
 

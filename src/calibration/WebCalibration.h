@@ -1,6 +1,5 @@
 #pragma once
 
-#ifdef ROBOS3_CALIBRATION_WEB
 #include <WebServer.h>
 
 namespace robos3
@@ -47,4 +46,3 @@ class WebCalibration
 };
 
 } // namespace robos3
-#endif

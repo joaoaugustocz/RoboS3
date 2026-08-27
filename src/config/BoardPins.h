@@ -24,10 +24,7 @@ constexpr uint8_t ULTRASONIC_TRIG = ULTRASONIC_1_TRIG;
 constexpr uint8_t ULTRASONIC_ECHO = ULTRASONIC_1_ECHO;
 /** @} */
 
-/** @name Barramentos I2C independentes
- *  @warning A pinagem provisoria do I2C0 colide com QTR S1 e ULTRA2 ECHO.
- *  Atualize SDA/SCL do I2C0 antes de usar esses modulos simultaneamente.
- *  @{ */
+/** @name Barramentos I2C independentes @{ */
 constexpr uint8_t I2C0_SDA = 47;
 constexpr uint8_t I2C0_SCL = 48;
 constexpr uint8_t I2C1_SDA = 39;

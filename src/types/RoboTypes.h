@@ -27,6 +27,29 @@ enum TipoLinha : uint8_t
     LINHA_BRANCA = 1 ///< Linha clara sobre fundo escuro.
 };
 
+/** @brief Forma eletrica usada para ler um botao cadastrado. */
+enum TipoBotao : uint8_t
+{
+    BOTAO_DIGITAL_PULLUP = 0, ///< Botao entre GPIO e GND; pressionado em nivel LOW.
+    BOTAO_ANALOGICO = 1       ///< Botao identificado por uma faixa ADC de 0 a 1023.
+};
+
+/** @brief Estado filtrado e dados temporais de um botao cadastrado. */
+struct LeituraBotao
+{
+    uint8_t id;                     ///< ID logico de 0 a 254 escolhido no cadastro.
+    TipoBotao tipo;                 ///< Entrada digital pull-up ou faixa analogica.
+    uint8_t pino;                   ///< GPIO usado pela entrada.
+    uint16_t valorBruto;            ///< Digital 0/1 ou ADC de 0 a 1023.
+    bool valido;                    ///< false quando o ID nao esta cadastrado.
+    bool pressionado;               ///< Estado estavel depois do debounce.
+    bool eventoApertado;            ///< Ha um evento de pressionamento ainda nao consumido.
+    bool eventoSolto;               ///< Ha um evento de soltura ainda nao consumido.
+    uint32_t duracaoPressionadoMs;  ///< Tempo do pressionamento atual; zero quando solto.
+    uint32_t duracaoUltimoApertoMs; ///< Duracao completa do ultimo pressionamento.
+    uint32_t quantidadeApertos;     ///< Total de transicoes estaveis para pressionado.
+};
+
 /** @brief Identifica uma fonte de distancia acessivel pela interface unificada. */
 enum SensorDistancia : uint8_t
 {

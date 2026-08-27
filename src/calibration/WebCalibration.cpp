@@ -1,4 +1,3 @@
-#ifdef ROBOS3_CALIBRATION_WEB
 #include "WebCalibration.h"
 #include "CalibrationManager.h"
 #include "../RoboS3.h"
@@ -224,4 +223,3 @@ void WebCalibration::apiReset()
 }
 
 } // namespace robos3
-#endif

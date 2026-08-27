@@ -76,6 +76,9 @@ class LineSensor
      */
     bool setCalibration(const uint16_t minimum[8], const uint16_t maximum[8]);
 
+    /** @brief Descarta os extremos QTR coletados e limpa o historico de linha. */
+    void resetCalibration();
+
     /** @brief Configura e limpa o historico. @param capacity Capacidade de 0 a 32. */
     void setHistoryCapacity(uint8_t capacity);
 

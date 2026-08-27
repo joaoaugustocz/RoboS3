@@ -4,34 +4,15 @@
 #include <Wire.h>
 #include <math.h>
 #include <string.h>
-#if defined(ROBOS3_CALIBRATION_WEB) || defined(ROBOS3_CALIBRATION_SERIAL)
-#include "calibration/CalibrationManager.h"
-#endif
-#ifdef ROBOS3_CALIBRATION_SERIAL
-#include "calibration/SerialCalibration.h"
-#endif
-#ifdef ROBOS3_CALIBRATION_WEB
-#include "calibration/WebCalibration.h"
-#endif
 
 using namespace robos3;
 
 RoboS3::RoboS3()
     : config_(RoboConfig::padrao()), status_{}, motors_{}, line_{}, pid_{},
-      ultrasonic_{}, vl53_{}, colors_{}, imu_{}, storage_{}, debug_{}, begun_(false),
-      anguloZInvertido_(false)
-#ifdef ROBOS3_CALIBRATION_SERIAL
-      ,
-      serialCalibration_(nullptr)
-#endif
-#ifdef ROBOS3_CALIBRATION_WEB
-      ,
-      webCalibration_(nullptr)
-#endif
-#if defined(ROBOS3_CALIBRATION_WEB) || defined(ROBOS3_CALIBRATION_SERIAL)
-      ,
-      calibrationManager_(nullptr)
-#endif
+      ultrasonic_{}, vl53_{}, colors_{}, imu_{}, storage_{}, buttons_{}, debug_{},
+      interfacesCalibracao_{nullptr, nullptr}, atualizadoresCalibracao_{nullptr, nullptr},
+      begun_(false), anguloZInvertido_(false),
+      sensoresCorTrocados_(false)
 {
 }
 
@@ -49,8 +30,8 @@ bool RoboS3::begin(Print& diagnostico)
     line_.setThreshold(config_.limiarLinha);
     status_.ultrassom1Habilitado = config_.board.ultrassom[0].habilitado;
     status_.ultrassom2Habilitado = config_.board.ultrassom[1].habilitado;
-    status_.corEsquerdaHabilitada = config_.board.corEsquerdaHabilitada;
-    status_.corDireitaHabilitada = config_.board.corDireitaHabilitada;
+    status_.corEsquerdaHabilitada = corHabilitada(COR_ESQUERDA);
+    status_.corDireitaHabilitada = corHabilitada(COR_DIREITA);
     status_.vl53_1Habilitado = config_.board.vl53[0].habilitado;
     status_.vl53_2Habilitado = config_.board.vl53[1].habilitado;
     if (status_.ultrassom1Habilitado)
@@ -70,27 +51,25 @@ bool RoboS3::begin(Print& diagnostico)
     auto dispositivosNoEndereco29 = [this](BarramentoI2C barramento)
     {
         uint8_t quantidade = 0;
-        quantidade += config_.board.corEsquerdaHabilitada &&
-                      config_.board.corEsquerdaI2C == barramento;
-        quantidade += config_.board.corDireitaHabilitada &&
-                      config_.board.corDireitaI2C == barramento;
+        quantidade += corHabilitada(COR_ESQUERDA) && barramentoCor(COR_ESQUERDA) == barramento;
+        quantidade += corHabilitada(COR_DIREITA) && barramentoCor(COR_DIREITA) == barramento;
         quantidade += config_.board.vl53[0].habilitado &&
                       config_.board.vl53[0].barramento == barramento;
         quantidade += config_.board.vl53[1].habilitado &&
                       config_.board.vl53[1].barramento == barramento;
         return quantidade;
     };
-    if (config_.board.corEsquerdaHabilitada &&
-        dispositivosNoEndereco29(config_.board.corEsquerdaI2C) == 1)
+    if (corHabilitada(COR_ESQUERDA) &&
+        dispositivosNoEndereco29(barramentoCor(COR_ESQUERDA)) == 1)
     {
-        status_.corEsquerda = i2cDisponivel(config_.board.corEsquerdaI2C) &&
-                              colors_[0].begin(wire(config_.board.corEsquerdaI2C));
+        status_.corEsquerda = i2cDisponivel(barramentoCor(COR_ESQUERDA)) &&
+                              colors_[0].begin(wire(barramentoCor(COR_ESQUERDA)));
     }
-    if (config_.board.corDireitaHabilitada &&
-        dispositivosNoEndereco29(config_.board.corDireitaI2C) == 1)
+    if (corHabilitada(COR_DIREITA) &&
+        dispositivosNoEndereco29(barramentoCor(COR_DIREITA)) == 1)
     {
-        status_.corDireita = i2cDisponivel(config_.board.corDireitaI2C) &&
-                            colors_[1].begin(wire(config_.board.corDireitaI2C));
+        status_.corDireita = i2cDisponivel(barramentoCor(COR_DIREITA)) &&
+                            colors_[1].begin(wire(barramentoCor(COR_DIREITA)));
     }
     if (config_.board.vl53[0].habilitado &&
         dispositivosNoEndereco29(config_.board.vl53[0].barramento) == 1)
@@ -111,19 +90,12 @@ bool RoboS3::begin(Print& diagnostico)
     pid_.configure(config_.kp, config_.ki, config_.kd, -config_.limitePID, config_.limitePID);
     status_.calibracaoCarregada = carregarCalibracao();
     begun_ = true;
-#if defined(ROBOS3_CALIBRATION_WEB) || defined(ROBOS3_CALIBRATION_SERIAL)
-    static CalibrationManager manager(*this);
-    calibrationManager_ = &manager;
-#endif
+    printCalibracao(diagnostico);
 #ifdef ROBOS3_CALIBRATION_SERIAL
-    static SerialCalibration serial(manager);
-    serialCalibration_ = &serial;
-    serial.begin();
+    iniciarCalibracaoSerial(Serial);
 #endif
 #ifdef ROBOS3_CALIBRATION_WEB
-    static WebCalibration web(manager);
-    webCalibration_ = &web;
-    web.begin();
+    iniciarCalibracaoWeb();
 #endif
     // A inicializacao de cada modulo e independente. Em caso de falha, begin()
     // ja informa o defeito no destino Print recebido (Serial por padrao).
@@ -141,28 +113,18 @@ bool RoboS3::begin(Print& diagnostico)
 
 void RoboS3::atualizar()
 {
+    buttons_.update();
     if (status_.imu)
     {
         imu_.update();
     }
-#if defined(ROBOS3_CALIBRATION_WEB) || defined(ROBOS3_CALIBRATION_SERIAL)
-    if (calibrationManager_)
+    for (uint8_t i = 0; i < 2; ++i)
     {
-        calibrationManager_->update();
+        if (interfacesCalibracao_[i] && atualizadoresCalibracao_[i])
+        {
+            atualizadoresCalibracao_[i](interfacesCalibracao_[i]);
+        }
     }
-#endif
-#ifdef ROBOS3_CALIBRATION_SERIAL
-    if (serialCalibration_)
-    {
-        serialCalibration_->update();
-    }
-#endif
-#ifdef ROBOS3_CALIBRATION_WEB
-    if (webCalibration_)
-    {
-        webCalibration_->update();
-    }
-#endif
 }
 
 void RoboS3::definePinsQTR(uint8_t s1, uint8_t s2, uint8_t s3, uint8_t s4, uint8_t s5, uint8_t s6,
@@ -222,7 +184,7 @@ void RoboS3::definePinsI2C1(uint8_t sda, uint8_t scl, uint32_t frequency)
 }
 void RoboS3::definirBarramentoCor(SensorCor sensor, BarramentoI2C barramento)
 {
-    if (sensor == COR_DIREITA)
+    if (indiceCorFisica(sensor) == 1)
     {
         config_.board.corDireitaI2C = barramento;
     }
@@ -233,7 +195,7 @@ void RoboS3::definirBarramentoCor(SensorCor sensor, BarramentoI2C barramento)
 }
 void RoboS3::habilitarSensorCor(SensorCor sensor, bool habilitado)
 {
-    if (sensor == COR_DIREITA)
+    if (indiceCorFisica(sensor) == 1)
     {
         config_.board.corDireitaHabilitada = habilitado;
     }
@@ -357,6 +319,51 @@ bool RoboS3::removerSensorDistancia(uint8_t id)
     }
     return false;
 }
+bool RoboS3::adicionarBotao(uint8_t id, uint8_t pino, uint16_t debounceMs)
+{
+    return buttons_.addDigital(id, pino, debounceMs);
+}
+bool RoboS3::adicionarBotaoAnalogico(uint8_t id, uint8_t pino, uint16_t valorMinimo,
+                                     uint16_t valorMaximo, uint16_t debounceMs)
+{
+    return buttons_.addAnalog(id, pino, valorMinimo, valorMaximo, debounceMs);
+}
+void RoboS3::atualizarBotoes()
+{
+    buttons_.update();
+}
+LeituraBotao RoboS3::lerBotao(uint8_t id)
+{
+    return buttons_.read(id);
+}
+bool RoboS3::botaoPressionado(uint8_t id)
+{
+    return buttons_.pressed(id);
+}
+bool RoboS3::botaoFoiApertado(uint8_t id)
+{
+    return buttons_.consumePressed(id);
+}
+bool RoboS3::botaoFoiSolto(uint8_t id)
+{
+    return buttons_.consumeReleased(id);
+}
+bool RoboS3::botaoPressionadoPor(uint8_t id, uint32_t tempoMs)
+{
+    return buttons_.heldFor(id, tempoMs);
+}
+bool RoboS3::botaoDisponivel(uint8_t id) const
+{
+    return buttons_.available(id);
+}
+bool RoboS3::removerBotao(uint8_t id)
+{
+    return buttons_.remove(id);
+}
+void RoboS3::limparBotoes()
+{
+    buttons_.clear();
+}
 void RoboS3::definirBarramentoIMU(BarramentoI2C barramento)
 {
     config_.board.imuI2C = barramento;
@@ -471,6 +478,11 @@ void RoboS3::inverterMotores(bool left, bool right)
 {
     inverterMotorEsquerdo(left);
     inverterMotorDireito(right);
+}
+void RoboS3::trocarMotores(bool trocados)
+{
+    motors_.stop();
+    motors_.setSwapped(trocados);
 }
 void RoboS3::configurarCompensacaoMotor(Motor motor, SentidoMotor direction, float factor)
 {
@@ -741,6 +753,21 @@ bool RoboS3::i2cDisponivel(BarramentoI2C barramento) const
 {
     return barramento == BARRAMENTO_I2C1 ? status_.i2c1 : status_.i2c0;
 }
+uint8_t RoboS3::indiceCorFisica(SensorCor sensor) const
+{
+    const uint8_t indiceLogico = sensor == COR_DIREITA ? 1 : 0;
+    return sensoresCorTrocados_ ? indiceLogico ^ 1U : indiceLogico;
+}
+BarramentoI2C RoboS3::barramentoCor(SensorCor sensor) const
+{
+    return indiceCorFisica(sensor) == 1 ? config_.board.corDireitaI2C
+                                        : config_.board.corEsquerdaI2C;
+}
+bool RoboS3::corHabilitada(SensorCor sensor) const
+{
+    return indiceCorFisica(sensor) == 1 ? config_.board.corDireitaHabilitada
+                                        : config_.board.corEsquerdaHabilitada;
+}
 LeituraCor RoboS3::lerDadosCor(SensorCor s)
 {
     return color(s).read();
@@ -822,6 +849,15 @@ void RoboS3::setTempoIntegracaoCor(SensorCor s, TempoIntegracaoCor time)
 {
     color(s).setIntegrationTime(time);
 }
+bool RoboS3::trocarSensoresCor(bool trocados)
+{
+    if (begun_)
+    {
+        return false;
+    }
+    sensoresCorTrocados_ = trocados;
+    return true;
+}
 
 LeituraIMU RoboS3::lerIMU()
 {
@@ -882,6 +918,8 @@ void RoboS3::applyCalibration(const RoboCalibration& d)
     configurarLimiarLinha(d.lineThreshold);
     motors_.setCalibration(MOTOR_ESQUERDO, d.leftMotor);
     motors_.setCalibration(MOTOR_DIREITO, d.rightMotor);
+    config_.motorEsquerdo = d.leftMotor;
+    config_.motorDireito = d.rightMotor;
     for (uint8_t s = 0; s < 2; ++s)
     {
         for (uint8_t c = 0; c < COR_TOTAL; ++c)
@@ -895,21 +933,41 @@ void RoboS3::applyCalibration(const RoboCalibration& d)
 }
 bool RoboS3::salvarCalibracao()
 {
-    return storage_.save(makeCalibration());
+    const bool salvou = storage_.save(makeCalibration());
+    if (salvou)
+    {
+        status_.calibracaoCarregada = true;
+    }
+    return salvou;
 }
 bool RoboS3::carregarCalibracao()
 {
     RoboCalibration d{};
     if (!storage_.load(d))
     {
+        status_.calibracaoCarregada = false;
         return false;
     }
     applyCalibration(d);
+    status_.calibracaoCarregada = true;
     return true;
 }
 bool RoboS3::apagarCalibracao()
 {
-    return storage_.erase();
+    const bool apagouNvs = storage_.erase();
+    const RoboConfig padrao = RoboConfig::padrao();
+    line_.resetCalibration();
+    configurarLimiarLinha(padrao.limiarLinha);
+    config_.motorEsquerdo = padrao.motorEsquerdo;
+    config_.motorDireito = padrao.motorDireito;
+    motors_.setCalibration(MOTOR_ESQUERDO, padrao.motorEsquerdo);
+    motors_.setCalibration(MOTOR_DIREITO, padrao.motorDireito);
+    colors_[0].resetConfiguration();
+    colors_[1].resetConfiguration();
+    imu_.setOffsets({});
+    imu_.zeroYaw();
+    status_.calibracaoCarregada = false;
+    return apagouNvs;
 }
 bool RoboS3::corDisponivel(SensorCor s) const
 {
@@ -1020,10 +1078,8 @@ void RoboS3::printErrosInicializacao(Print& out) const
     auto quantidadeEndereco29 = [this](BarramentoI2C barramento)
     {
         uint8_t quantidade = 0;
-        quantidade += config_.board.corEsquerdaHabilitada &&
-                      config_.board.corEsquerdaI2C == barramento;
-        quantidade += config_.board.corDireitaHabilitada &&
-                      config_.board.corDireitaI2C == barramento;
+        quantidade += corHabilitada(COR_ESQUERDA) && barramentoCor(COR_ESQUERDA) == barramento;
+        quantidade += corHabilitada(COR_DIREITA) && barramentoCor(COR_DIREITA) == barramento;
         quantidade += config_.board.vl53[0].habilitado &&
                       config_.board.vl53[0].barramento == barramento;
         quantidade += config_.board.vl53[1].habilitado &&
@@ -1041,16 +1097,16 @@ void RoboS3::printErrosInicializacao(Print& out) const
         out.println(F("- I2C1: mais de um TCS34725/VL53L0X usa o endereco 0x29."));
     }
     if (status_.corEsquerdaHabilitada && !status_.corEsquerda &&
-        !(config_.board.corEsquerdaI2C == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
+        !(barramentoCor(COR_ESQUERDA) == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
     {
         out.print(F("- Cor esquerda: TCS34725 nao respondeu no "));
-        out.println(config_.board.corEsquerdaI2C == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
+        out.println(barramentoCor(COR_ESQUERDA) == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
     }
     if (status_.corDireitaHabilitada && !status_.corDireita &&
-        !(config_.board.corDireitaI2C == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
+        !(barramentoCor(COR_DIREITA) == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
     {
         out.print(F("- Cor direita: TCS34725 nao respondeu no "));
-        out.println(config_.board.corDireitaI2C == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
+        out.println(barramentoCor(COR_DIREITA) == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
     }
     if (status_.vl53_1Habilitado && !status_.vl53_1 &&
         !(config_.board.vl53[0].barramento == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
@@ -1145,4 +1201,113 @@ void RoboS3::printMotores(Print& out) const
     out.print(motors_.leftCommand());
     out.print(F(" D="));
     out.println(motors_.rightCommand());
+}
+
+void RoboS3::printCalibracao(Print& out) const
+{
+    out.print(F("[RoboS3] Calibracao aplicada: "));
+    out.println(status_.calibracaoCarregada ? F("SALVA NA NVS") : F("VALORES PADRAO"));
+
+    uint16_t minimos[8]{};
+    uint16_t maximos[8]{};
+    const bool qtrCalibrado = line_.getCalibration(minimos, maximos);
+    out.print(F("  QTR calibrado="));
+    out.print(qtrCalibrado ? F("sim") : F("nao"));
+    out.print(F(" limiar="));
+    out.print(line_.threshold());
+    if (qtrCalibrado)
+    {
+        out.print(F(" min="));
+        for (uint8_t i = 0; i < 8; ++i)
+        {
+            if (i)
+            {
+                out.print(',');
+            }
+            out.print(minimos[i]);
+        }
+        out.print(F(" max="));
+        for (uint8_t i = 0; i < 8; ++i)
+        {
+            if (i)
+            {
+                out.print(',');
+            }
+            out.print(maximos[i]);
+        }
+    }
+    out.println();
+
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        const CalibracaoMotor& motor =
+            motors_.calibration(i == 0 ? MOTOR_ESQUERDO : MOTOR_DIREITO);
+        out.print(i == 0 ? F("  Motor E") : F("  Motor D"));
+        out.print(F(": compFrente="));
+        out.print(motor.compensacaoFrente, 3);
+        out.print(F(" compTras="));
+        out.print(motor.compensacaoTras, 3);
+        out.print(F(" minimoFrente="));
+        out.print(motor.minimoFrente);
+        out.print(F(" minimoTras="));
+        out.print(motor.minimoTras);
+        out.print(F(" invertido="));
+        out.println(motor.invertido ? F("sim") : F("nao"));
+    }
+    out.print(F("  Mapeamento: motoresTrocados="));
+    out.print(motors_.swapped() ? F("sim") : F("nao"));
+    out.print(F(" coresTrocadas="));
+    out.println(sensoresCorTrocados_ ? F("sim") : F("nao"));
+
+    static const char* nomesCores[COR_TOTAL] =
+        {"desconhecida", "preta", "branca", "vermelha", "verde", "azul", "amarela", "laranja", "roxa"};
+    static const uint8_t ganhos[] = {1, 4, 16, 60};
+    static const char* integracoes[] = {"2.4ms", "24ms", "50ms", "101ms", "154ms", "600ms"};
+    for (uint8_t sensor = 0; sensor < 2; ++sensor)
+    {
+        const uint8_t ganho = static_cast<uint8_t>(colors_[sensor].gain());
+        const uint8_t integracao = static_cast<uint8_t>(colors_[sensor].integrationTime());
+        out.print(sensor == 0 ? F("  Cor E") : F("  Cor D"));
+        out.print(F(": ganho="));
+        out.print(ganho < 4 ? ganhos[ganho] : 0);
+        out.print('x');
+        out.print(F(" integracao="));
+        out.println(integracao < 6 ? integracoes[integracao] : "invalida");
+        for (uint8_t cor = 0; cor < COR_TOTAL; ++cor)
+        {
+            const FaixaHSV& faixa = colors_[sensor].range(static_cast<CorDetectada>(cor));
+            if (!faixa.ativa)
+            {
+                continue;
+            }
+            out.print(F("    "));
+            out.print(nomesCores[cor]);
+            out.print(F(": H="));
+            out.print(faixa.hMin, 1);
+            out.print(F(".."));
+            out.print(faixa.hMax, 1);
+            out.print(F(" S="));
+            out.print(faixa.sMin, 1);
+            out.print(F(".."));
+            out.print(faixa.sMax, 1);
+            out.print(F(" V="));
+            out.print(faixa.vMin, 1);
+            out.print(F(".."));
+            out.println(faixa.vMax, 1);
+        }
+    }
+
+    const robos3::IMUOffsets& offsets = imu_.offsets();
+    out.print(F("  IMU offsets: acc="));
+    out.print(offsets.ax);
+    out.print(',');
+    out.print(offsets.ay);
+    out.print(',');
+    out.print(offsets.az);
+    out.print(F(" gyro="));
+    out.print(offsets.gx);
+    out.print(',');
+    out.print(offsets.gy);
+    out.print(',');
+    out.println(offsets.gz);
 }

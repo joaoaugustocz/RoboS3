@@ -3,6 +3,10 @@ RoboS3 robo;
 void setup()
 {
     Serial.begin(115200);
+
+    // Use true se o TCS esquerdo foi conectado no canal do direito e vice-versa.
+    // Esta configuracao precisa ser feita antes de robo.begin().
+    robo.trocarSensoresCor(false);
     robo.begin();
 }
 void loop()

@@ -1,4 +1,3 @@
-#ifdef ROBOS3_CALIBRATION_SERIAL
 #include "SerialCalibration.h"
 #include "CalibrationManager.h"
 #include "../RoboS3.h"
@@ -337,4 +336,3 @@ void SerialCalibration::execute(char* line)
 }
 
 } // namespace robos3
-#endif

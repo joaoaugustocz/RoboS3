@@ -2,6 +2,16 @@
 
 ## 0.4.0
 
+- cadastro de até 12 botões digitais com `INPUT_PULLUP` ou teclas analógicas
+  resistivas, com debounce, eventos, durações e contagem de apertos;
+- troca lógica dos canais dos motores e dos sensores de cor sem alterar a
+  estratégia escrita pelo aluno;
+- calibração Serial/Web ativável por métodos no sketch, sem build flags;
+- relatório automático no `begin()` com origem e valores efetivos de todas as
+  calibrações, além de `printCalibracao()` para diagnóstico sob demanda;
+- reset completo da calibração persistida e dos valores em RAM;
+- correção final da pinagem I2C0 47/48, I2C1 39/40 e confirmação da ponte H em
+  ENA/IN1/IN2/IN3/IN4/ENB = 14/15/11/12/13/21;
 - interface unificada de distância por ID para dois HC-SR04 e até dois VL53L0X;
 - pinagem padrão revisada dos ultrassons: ULTRA1 em 17/18 e ULTRA2 em 16/42;
 - integração da biblioteca Pololu VL53L0X 1.3.1 com seleção entre I2C0 e I2C1,

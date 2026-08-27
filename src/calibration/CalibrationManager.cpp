@@ -1,4 +1,3 @@
-#if defined(ROBOS3_CALIBRATION_WEB) || defined(ROBOS3_CALIBRATION_SERIAL)
 #include "CalibrationManager.h"
 #include "../RoboS3.h"
 
@@ -52,4 +51,3 @@ void CalibrationManager::calibrateImu(uint32_t ms)
 }
 
 } // namespace robos3
-#endif

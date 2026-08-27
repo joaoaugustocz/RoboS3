@@ -27,6 +27,9 @@ class ColorSensor
     /** @brief Define a integracao. @param time Tempo usado nas proximas leituras. */
     void setIntegrationTime(TempoIntegracaoCor time);
 
+    /** @brief Restaura ganho 4x, integracao 50 ms e todas as faixas HSV padrao. */
+    void resetConfiguration();
+
     /** @return Ganho atualmente configurado. */
     GanhoCor gain() const
     {

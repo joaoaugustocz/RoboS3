@@ -30,6 +30,21 @@ class MotorDriver
      */
     void move(int left, int right);
 
+    /**
+     * @brief Troca o canal fisico acionado pelos comandos esquerdo e direito.
+     * @param swapped true quando os conectores dos motores estao trocados.
+     */
+    void setSwapped(bool swapped)
+    {
+        swapped_ = swapped;
+    }
+
+    /** @return true quando os canais fisicos esquerdo e direito estao trocados. */
+    bool swapped() const
+    {
+        return swapped_;
+    }
+
     /** @brief Desliga os enables e deixa os motores em parada livre. */
     void stop();
 
@@ -62,13 +77,14 @@ class MotorDriver
     }
 
   private:
-    void drive(bool left, int command);
+    void drive(bool physicalLeft, int command, const CalibracaoMotor& calibration);
     MotorPins pins_;
     CalibracaoMotor calibration_[2];
     uint16_t pwmMax_;
     int leftCommand_;
     int rightCommand_;
     bool begun_;
+    bool swapped_;
 };
 
 } // namespace robos3

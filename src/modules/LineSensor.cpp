@@ -197,6 +197,17 @@ uint32_t LineSensor::timeWithoutLine() const
     return elapsedWithoutDetection(millis(), lastDetectionMs_, false);
 }
 
+void LineSensor::resetCalibration()
+{
+    qtr_.resetCalibration();
+    last_ = {};
+    linePattern(0, last_.padrao);
+    last_.ultimaPosicaoValida = 3500;
+    lastValidPosition_ = 3500;
+    lastDetectionMs_ = millis();
+    clearHistory();
+}
+
 void LineSensor::setHistoryCapacity(uint8_t capacity)
 {
     historyCapacity_ = capacity > MAX_HISTORICO_LINHA ? MAX_HISTORICO_LINHA : capacity;

@@ -251,6 +251,24 @@
 #undef SENSOR_TRAS
 #undef SENSOR_LATERAL
 
+#define robo robo_31
+#define setup setup_31
+#define loop loop_31
+#define BOTAO_INICIAR BOTAO_INICIAR_31
+#define BOTAO_MODO_1 BOTAO_MODO_1_31
+#define BOTAO_MODO_2 BOTAO_MODO_2_31
+#define avisoPressionamentoLongo avisoPressionamentoLongo_31
+#define ultimaImpressaoBotoesMs ultimaImpressaoBotoesMs_31
+#include "../examples/31_Botoes/31_Botoes.ino"
+#undef robo
+#undef setup
+#undef loop
+#undef BOTAO_INICIAR
+#undef BOTAO_MODO_1
+#undef BOTAO_MODO_2
+#undef avisoPressionamentoLongo
+#undef ultimaImpressaoBotoesMs
+
 void setup()
 {
 }

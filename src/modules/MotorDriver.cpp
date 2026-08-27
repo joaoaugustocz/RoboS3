@@ -8,7 +8,7 @@ namespace robos3
 
 MotorDriver::MotorDriver()
     : pins_{}, calibration_{{1, 1, 18, 18, false}, {1, 1, 18, 18, false}}, pwmMax_(0),
-      leftCommand_(0), rightCommand_(0), begun_(false)
+      leftCommand_(0), rightCommand_(0), begun_(false), swapped_(false)
 {
 }
 
@@ -40,18 +40,18 @@ bool MotorDriver::begin(const MotorPins& pins, uint32_t frequency, uint8_t resol
     return begun_;
 }
 
-void MotorDriver::drive(bool left, int command)
+void MotorDriver::drive(bool physicalLeft, int command, const CalibracaoMotor& calibration)
 {
-    const MotorOutput out = motorOutput(command, calibration_[left ? 0 : 1], pwmMax_);
-    const uint8_t inA = left ? pins_.in1 : pins_.in3;
-    const uint8_t inB = left ? pins_.in2 : pins_.in4;
-    const uint8_t enable = left ? pins_.ena : pins_.enb;
+    const MotorOutput out = motorOutput(command, calibration, pwmMax_);
+    const uint8_t inA = physicalLeft ? pins_.in1 : pins_.in3;
+    const uint8_t inB = physicalLeft ? pins_.in2 : pins_.in4;
+    const uint8_t enable = physicalLeft ? pins_.ena : pins_.enb;
     digitalWrite(inA, out.forward ? HIGH : LOW);
     digitalWrite(inB, out.forward ? LOW : HIGH);
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
     ledcWrite(enable, out.duty);
 #else
-    ledcWrite(left ? 0 : 1, out.duty);
+    ledcWrite(physicalLeft ? 0 : 1, out.duty);
 #endif
 }
 
@@ -63,8 +63,10 @@ void MotorDriver::move(int left, int right)
     }
     leftCommand_ = clampCommand(left);
     rightCommand_ = clampCommand(right);
-    drive(true, leftCommand_);
-    drive(false, rightCommand_);
+    drive(true, swapped_ ? rightCommand_ : leftCommand_,
+          calibration_[swapped_ ? MOTOR_DIREITO : MOTOR_ESQUERDO]);
+    drive(false, swapped_ ? leftCommand_ : rightCommand_,
+          calibration_[swapped_ ? MOTOR_ESQUERDO : MOTOR_DIREITO]);
 }
 
 void MotorDriver::stop()

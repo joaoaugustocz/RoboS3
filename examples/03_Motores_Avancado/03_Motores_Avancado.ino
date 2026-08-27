@@ -2,6 +2,10 @@
 RoboS3 robo;
 void setup()
 {
+    // Use true somente se os conectores esquerdo e direito foram trocados.
+    robo.trocarMotores(false);
+
+    // Estas opcoes corrigem a polaridade de cada motor, nao trocam os lados.
     robo.inverterMotores(false, false);
     robo.begin();
 }

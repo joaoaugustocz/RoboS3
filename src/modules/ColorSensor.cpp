@@ -69,6 +69,13 @@ void ColorSensor::setIntegrationTime(TempoIntegracaoCor time)
     }
 }
 
+void ColorSensor::resetConfiguration()
+{
+    loadDefaultRanges();
+    setGain(GANHO_4X);
+    setIntegrationTime(INTEGRACAO_50MS);
+}
+
 LeituraCor ColorSensor::read()
 {
     LeituraCor reading{};
