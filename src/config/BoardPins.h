@@ -14,6 +14,14 @@ constexpr uint8_t QTR_PINS[8] = {1, 2, 3, 5, 6, 7, 8, 9};
 constexpr uint8_t QTR_EMITTER_PIN = 0xFF; ///< Nao existe conexao CTRL visivel.
 /** @} */
 
+/** @name Contrato ADC compartilhado pelo QTR-8A e botoes analogicos
+ *  A RoboS3 le o QTR-8A diretamente para preservar os 12 bits do ESP32-S3,
+ *  sem depender do limite interno de 10 bits da QTRSensors 4.0.0.
+ *  @{ */
+constexpr uint8_t ADC_RESOLUTION_BITS = 12;
+constexpr uint16_t ADC_MAX_VALUE = (1U << ADC_RESOLUTION_BITS) - 1U;
+/** @} */
+
 /** @name Sensores ultrassonicos ULTRA1 e ULTRA2 @{ */
 constexpr uint8_t ULTRASONIC_1_TRIG = 17;
 constexpr uint8_t ULTRASONIC_1_ECHO = 18;

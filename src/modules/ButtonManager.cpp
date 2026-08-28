@@ -1,6 +1,7 @@
 #include "ButtonManager.h"
 
 #include <string.h>
+#include "../config/BoardPins.h"
 
 namespace robos3
 {
@@ -28,6 +29,9 @@ bool ButtonManager::rawPressed(Slot& slot)
         slot.rawValue = digitalRead(slot.pin);
         return slot.rawValue == LOW;
     }
+#if defined(ARDUINO_ARCH_ESP32)
+    analogReadResolution(board::ADC_RESOLUTION_BITS);
+#endif
     slot.rawValue = analogRead(slot.pin);
     return slot.rawValue >= slot.minimum && slot.rawValue <= slot.maximum;
 }
@@ -70,12 +74,12 @@ bool ButtonManager::addAnalog(uint8_t id, uint8_t pin, uint16_t minimum, uint16_
                               uint16_t debounceMs)
 {
     if (id == 255 || pin < 1 || pin > 20 || indexOf(id) >= 0 || minimum > maximum ||
-        maximum > 1023)
+        maximum > board::ADC_MAX_VALUE)
     {
         return false;
     }
 #if defined(ARDUINO_ARCH_ESP32)
-    analogReadResolution(10);
+    analogReadResolution(board::ADC_RESOLUTION_BITS);
 #endif
     for (uint8_t i = 0; i < MAX_BOTOES; ++i)
     {

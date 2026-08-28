@@ -962,6 +962,22 @@ bool RoboS3::carregarCalibracao()
         status_.calibracaoCarregada = false;
         return false;
     }
+    if (d.schema == CALIBRATION_SCHEMA_QTR_10_BITS && config_.board.qtrType == QTR_8A)
+    {
+        // Ate o schema 1, o backend analogico era limitado a 0...1023 pela
+        // QTRSensors. Converte somente extremos validos para preservar a NVS.
+        for (uint8_t i = 0; i < 8; ++i)
+        {
+            if (d.lineMinimum[i] < d.lineMaximum[i] && d.lineMaximum[i] <= 1023)
+            {
+                d.lineMinimum[i] = static_cast<uint16_t>(
+                    (static_cast<uint32_t>(d.lineMinimum[i]) * 4095U + 511U) / 1023U);
+                d.lineMaximum[i] = static_cast<uint16_t>(
+                    (static_cast<uint32_t>(d.lineMaximum[i]) * 4095U + 511U) / 1023U);
+            }
+        }
+        d.schema = CALIBRATION_SCHEMA;
+    }
     applyCalibration(d);
     status_.calibracaoCarregada = true;
     return true;

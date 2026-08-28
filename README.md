@@ -2,7 +2,7 @@
 
 Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**, baseada no **ESP32-S3-N8R2**. A API começa simples (`frente`, `parar`, `seguirLinha`) e preserva acesso a valores brutos, calibração, máscara, PID, RGB/HSV/HSL e IMU para o aluno evoluir sem trocar de biblioteca.
 
-**Versão estável:** 0.4.1 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
+**Versão estável:** 0.4.2 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
 
 ## Conteúdo
 
@@ -167,7 +167,9 @@ Mesmo que a NVS tenha `invertido=false`, o relatório mostrará `SALVA NA NVS + 
 
 ## Sensor de linha
 
-O padrão usa QTR-8A e chama `analogReadResolution(10)` porque QTRSensors 4.0.0 normaliza o backend analógico em 0…1023. Após calibração, os valores são 0…1000.
+O padrão usa QTR-8A com aquisição nativa de **12 bits** no ESP32-S3: a leitura bruta vai de `0…4095`. A RoboS3 não acessa nem altera o membro privado `_maxValue` da QTRSensors. No modo analógico, ela lê os oito GPIOs diretamente, faz a média de quatro amostras e mantém calibração própria; a QTRSensors continua sendo usada no modo QTR-8RC. Assim, uma atualização da dependência não volta a limitar o QTR-8A a 10 bits. Após calibração, a escala pública permanece `0…1000`, portanto limiar, máscara, posição e PID continuam compatíveis.
+
+Uma escala nominal de 12 bits fornece mais níveis, mas não garante 12 bits efetivos de precisão: ruído, alimentação e características do ADC ainda influenciam a medida. Calibre o conjunto na pista real. Calibrações QTR-8A salvas pela versão 0.4.1 ou anterior são convertidas automaticamente de `0…1023` para `0…4095` ao carregar; chame `salvarCalibracao()` para persistir definitivamente o novo formato.
 
 ```cpp
 robo.calibrarLinha(5000);       // tempo em ms
@@ -203,7 +205,7 @@ if (linha.posicaoValida)
 
 | Campo ou função | Tipo/escala | Como usar |
 |---|---|---|
-| `bruto[8]` | `uint16_t[8]` | Aquisição física na ordem S1…S8; útil para diagnóstico e calibração. |
+| `bruto[8]` | `uint16_t[8]` | Aquisição física na ordem S1…S8; QTR-8A usa `0…4095`, enquanto QTR-8RC retorna tempo de descarga. |
 | `calibrado[8]` | `uint16_t[8]`, `0…1000` | Valores normalizados pelos mínimos e máximos calibrados. |
 | `mascara` | `uint8_t` | S1 é bit 7, S8 é bit 0 e preto físico vale 1. |
 | `caso` | `PadraoLinha` | A mesma máscara com nome legível, como `BBBPPBBB`. |
@@ -354,7 +356,7 @@ if (robo.botaoFoiApertado(1))
 
 ### Vários botões em uma entrada analógica
 
-Um teclado resistivo produz um valor ADC diferente para cada tecla. Cadastre todas no mesmo pino, com faixas inclusivas que não se sobreponham. A RoboS3 usa ADC de 10 bits (`0…1023`). Os valores dependem dos resistores e da alimentação: primeiro observe `robo.lerBotao(id).valorBruto`, depois deixe margem entre as faixas.
+Um teclado resistivo produz um valor ADC diferente para cada tecla. Cadastre todas no mesmo pino, com faixas inclusivas que não se sobreponham. A RoboS3 usa ADC de 12 bits (`0…4095`). Os valores dependem dos resistores e da alimentação: primeiro observe `robo.lerBotao(id).valorBruto`, depois deixe margem entre as faixas.
 
 ```cpp
 robo.adicionarBotaoAnalogico(2, 4, 120, 220, 30);
@@ -510,7 +512,7 @@ Use `@return` em funções não `void`, documente cada `@param`, declare unidade
 | GPIO (`pino`, `sda`, `scl`, `trigger`, `echo`) | `uint8_t` | Número físico `0…48`; a validade elétrica depende do ESP32-S3 e da placa. `255` só é aceito como ausência do emitter QTR. |
 | tempo/debounce/timeout | `uint16_t` ou `uint32_t` | Milissegundos. O tipo exato aparece na assinatura de cada método; contagens usam aritmética segura com `millis()`. |
 | QTR calibrado/limiar | `uint16_t` | `0…1000`; posição da linha `0…7000`, centro `3500`. |
-| ADC de botão | `uint16_t` | `0…1023`, limites inclusivos e não sobrepostos no mesmo pino. |
+| ADC de botão | `uint16_t` | `0…4095`, limites inclusivos e não sobrepostos no mesmo pino. |
 | ângulo, distância, ganhos e cores | `float` | Ângulo em graus; distância em cm; HSV/HSL: H `0…360`, S/V/L `0…100`; compensação de motor `1.0f` é neutra. |
 | seletores | `enum` | Use as constantes documentadas, como `MOTOR_ESQUERDO`, `COR_DIREITA` e `BARRAMENTO_I2C1`, em vez de números soltos. |
 | saída textual | `Print&`/`Stream&` | `Serial` por padrão; o sketch deve inicializar a porta e escolher sua velocidade. |
@@ -608,7 +610,7 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | Assinatura C++ | Parâmetros, retorno e aplicação |
 |---|---|
 | `bool adicionarBotao(uint8_t id, uint8_t pino, uint16_t debounceMs = 30)` | Digital entre GPIO e GND com `INPUT_PULLUP`; ID `0…254`, debounce em ms. Retorna `false` para conflito ou limite. |
-| `bool adicionarBotaoAnalogico(uint8_t id, uint8_t pino, uint16_t valorMinimo, uint16_t valorMaximo, uint16_t debounceMs = 30)` | Cadastra uma faixa ADC inclusiva `0…1023`; várias teclas podem compartilhar o pino com faixas separadas. |
+| `bool adicionarBotaoAnalogico(uint8_t id, uint8_t pino, uint16_t valorMinimo, uint16_t valorMaximo, uint16_t debounceMs = 30)` | Cadastra uma faixa ADC inclusiva `0…4095`; várias teclas podem compartilhar o pino com faixas separadas. |
 | `void atualizarBotoes()` | Atualiza o debounce; é desnecessário se `atualizar()` já é chamado no `loop()`. |
 | `LeituraBotao lerBotao(uint8_t id)` | Retorna estado, valor bruto, eventos, tempos e contador sem consumir eventos; `valido=false` para ID ausente. |
 | `bool botaoPressionado(uint8_t id)` | `true` enquanto o estado filtrado permanecer pressionado. |
@@ -702,7 +704,7 @@ Chame estes métodos somente antes de `begin()`.
 
 | Estrutura/campo | Unidade ou domínio | Observação |
 |---|---|---|
-| `LeituraLinha.bruto[8]` | leitura física do QTR | Ordem S1…S8; a escala depende de `QTR_8A` ou `QTR_8RC`. |
+| `LeituraLinha.bruto[8]` | leitura física do QTR | Ordem S1…S8; QTR-8A usa ADC `0…4095`, QTR-8RC usa tempo de descarga. |
 | `LeituraLinha.calibrado[8]` | `0…1000` | Valores normalizados pelos extremos de calibração. |
 | `LeituraLinha.mascara` / `.caso` | byte / `PadraoLinha` | S1 é bit 7, S8 é bit 0 e preto físico vale 1. |
 | `LeituraLinha.padrao[9]` | texto P/B | O nono caractere é o terminador nulo. |
@@ -728,7 +730,7 @@ Chame estes métodos somente antes de `begin()`.
 | `LeituraDistancia.id/sensor/tipo` | identificadores | Separam o nome escolhido, o slot físico e a tecnologia usada. |
 | `LeituraDistancia.valida/timeout` | booleanos | `timeout` indica especificamente expiração do VL53L0X. |
 | `LeituraBotao.id/pino/tipo` | identificadores | Repetem o cadastro; confira `valido` antes dos demais campos. |
-| `LeituraBotao.valorBruto` | digital `0/1` ou ADC `0…1023` | Permite diagnosticar ligação e escolher faixas do teclado resistivo. |
+| `LeituraBotao.valorBruto` | digital `0/1` ou ADC `0…4095` | Permite diagnosticar ligação e escolher faixas do teclado resistivo. |
 | `LeituraBotao.pressionado` | booleano | Estado estável depois do debounce. |
 | `LeituraBotao.eventoApertado/eventoSolto` | booleanos | Apenas indicam evento pendente; a leitura da estrutura não o consome. |
 | `LeituraBotao.duracaoPressionadoMs/duracaoUltimoApertoMs` | milissegundos | Duração atual ou duração completa do último aperto. |

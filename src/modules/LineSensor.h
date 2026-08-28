@@ -48,7 +48,12 @@ class LineSensor
      */
     LeituraLinha read();
 
-    /** @brief Faz leitura bruta. @param output Vetor de oito valores na ordem S1...S8. */
+    /**
+     * @brief Faz leitura bruta.
+     * @param output Vetor de oito valores na ordem S1...S8. No QTR-8A, cada
+     * valor usa os 12 bits do ESP32-S3 (0...4095); no QTR-8RC, representa o
+     * tempo de descarga configurado pela QTRSensors.
+     */
     void readRaw(uint16_t output[8]);
 
     /** @brief Faz leitura calibrada. @param output Vetor de oito valores em 0...1000. */
@@ -126,12 +131,25 @@ class LineSensor
     }
 
   private:
+    static constexpr uint8_t ANALOG_SAMPLES_PER_READ = 4;
+    static constexpr uint8_t ANALOG_CALIBRATION_READS = 10;
+
+    void prepararADC() const;
+    void readAnalogRaw(uint16_t output[8]) const;
+    void calibrateAnalogStep();
+    void resetAnalogCalibration();
+    bool calibrationInitialized() const;
     void calibrateRaw(const uint16_t raw[8], uint16_t output[8]) const;
     uint16_t positionFrom(const uint16_t calibrated[8], bool& valid);
     void updateHistory(PadraoLinha pattern, uint32_t nowMs);
     uint8_t historyIndexFromNewest(uint8_t offset) const;
 
     QTRSensors qtr_;
+    TipoQTR type_;
+    uint8_t pins_[8];
+    uint16_t analogMinimum_[8];
+    uint16_t analogMaximum_[8];
+    bool analogCalibrationInitialized_;
     TipoLinha lineType_;
     uint16_t threshold_;
     LeituraLinha last_;

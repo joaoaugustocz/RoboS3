@@ -10,7 +10,9 @@ namespace robos3
 /** @brief Assinatura que identifica um bloco NVS pertencente a RoboS3. */
 constexpr uint32_t CALIBRATION_MAGIC = 0x524F424F;
 /** @brief Versao do formato persistente RoboCalibration. */
-constexpr uint16_t CALIBRATION_SCHEMA = 1;
+constexpr uint16_t CALIBRATION_SCHEMA = 2;
+/** @brief Schema anterior, cujo QTR-8A era armazenado em 10 bits. */
+constexpr uint16_t CALIBRATION_SCHEMA_QTR_10_BITS = 1;
 
 /**
  * @brief Bloco persistente com todas as calibracoes do robo.

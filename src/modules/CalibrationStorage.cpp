@@ -48,9 +48,10 @@ bool CalibrationStorage::load(RoboCalibration& data)
     }
     const size_t read = preferences.getBytes("calibration", &data, sizeof(data));
     preferences.end();
-    return read == sizeof(data) && data.magic == CALIBRATION_MAGIC &&
-           data.schema == CALIBRATION_SCHEMA && data.size == sizeof(data) &&
-           data.checksum == checksum(data);
+    const bool schemaSuportado =
+        data.schema == CALIBRATION_SCHEMA || data.schema == CALIBRATION_SCHEMA_QTR_10_BITS;
+    return read == sizeof(data) && data.magic == CALIBRATION_MAGIC && schemaSuportado &&
+           data.size == sizeof(data) && data.checksum == checksum(data);
 }
 
 bool CalibrationStorage::erase()

@@ -19,8 +19,9 @@ void setup()
 
     // Teclas analogicas: todas compartilham o GPIO4, mas cada resistor produz
     // uma faixa diferente. Meça valorBruto e ajuste estes limites na sua placa.
-    robo.adicionarBotaoAnalogico(BOTAO_MODO_1, 4, 120, 220);
-    robo.adicionarBotaoAnalogico(BOTAO_MODO_2, 4, 430, 540);
+    // A leitura usa 12 bits (0...4095). Estes numeros sao apenas exemplos.
+    robo.adicionarBotaoAnalogico(BOTAO_MODO_1, 4, 480, 880);
+    robo.adicionarBotaoAnalogico(BOTAO_MODO_2, 4, 1720, 2160);
 
     robo.begin();
 }

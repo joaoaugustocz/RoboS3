@@ -29,8 +29,8 @@ class ButtonManager
      * @brief Cadastra uma tecla de um conjunto resistivo em uma entrada ADC.
      * @param id ID unico de 0 a 254.
      * @param pin GPIO ADC do ESP32-S3, de 1 a 20, compartilhado pelo conjunto.
-     * @param minimum Menor valor ADC que representa esta tecla, de 0 a 1023.
-     * @param maximum Maior valor ADC que representa esta tecla, de 0 a 1023.
+     * @param minimum Menor valor ADC de 12 bits que representa esta tecla, de 0 a 4095.
+     * @param maximum Maior valor ADC de 12 bits que representa esta tecla, de 0 a 4095.
      * @param debounceMs Tempo estavel exigido para aceitar uma transicao.
      * @return false para faixa invalida/sobreposta, conflito de pino, ID duplicado ou falta de slot.
      */

@@ -31,7 +31,7 @@ enum TipoLinha : uint8_t
 enum TipoBotao : uint8_t
 {
     BOTAO_DIGITAL_PULLUP = 0, ///< Botao entre GPIO e GND; pressionado em nivel LOW.
-    BOTAO_ANALOGICO = 1       ///< Botao identificado por uma faixa ADC de 0 a 1023.
+    BOTAO_ANALOGICO = 1       ///< Botao identificado por uma faixa ADC de 0 a 4095.
 };
 
 /** @brief Estado filtrado e dados temporais de um botao cadastrado. */
@@ -40,7 +40,7 @@ struct LeituraBotao
     uint8_t id;                     ///< ID logico de 0 a 254 escolhido no cadastro.
     TipoBotao tipo;                 ///< Entrada digital pull-up ou faixa analogica.
     uint8_t pino;                   ///< GPIO usado pela entrada.
-    uint16_t valorBruto;            ///< Digital 0/1 ou ADC de 0 a 1023.
+    uint16_t valorBruto;            ///< Digital 0/1 ou ADC de 12 bits, de 0 a 4095.
     bool valido;                    ///< false quando o ID nao esta cadastrado.
     bool pressionado;               ///< Estado estavel depois do debounce.
     bool eventoApertado;            ///< Ha um evento de pressionamento ainda nao consumido.
@@ -475,7 +475,7 @@ struct LeituraCor
 /** @brief Resultado completo derivado de uma unica aquisicao dos oito QTR. */
 struct LeituraLinha
 {
-    uint16_t bruto[8];          ///< Valores fisicos na ordem S1...S8.
+    uint16_t bruto[8];          ///< QTR-8A: 0...4095; QTR-8RC: tempo, na ordem S1...S8.
     uint16_t calibrado[8];      ///< Valores normalizados para 0...1000.
     uint8_t mascara;            ///< S1 no bit 7, S8 no bit 0; preto vale 1.
     PadraoLinha caso;           ///< Mesmo valor da mascara com nome P/B.

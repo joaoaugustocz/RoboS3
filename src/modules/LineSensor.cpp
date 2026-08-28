@@ -2,42 +2,135 @@
 
 #include <Arduino.h>
 #include <string.h>
+#include "../config/BoardPins.h"
 #include "RoboMath.h"
 
 namespace robos3
 {
 
+static_assert(board::ADC_MAX_VALUE == 4095, "O backend QTR-8A da RoboS3 exige ADC de 12 bits.");
+
 LineSensor::LineSensor()
-    : lineType_(LINHA_PRETA), threshold_(500), last_{}, lastDetectionMs_(0),
-      lastValidPosition_(3500), begun_(false), history_{}, historyCapacity_(8), historyCount_(0),
-      historyNext_(0)
+    : type_(QTR_8A), pins_{}, analogMinimum_{}, analogMaximum_{},
+      analogCalibrationInitialized_(false), lineType_(LINHA_PRETA), threshold_(500), last_{},
+      lastDetectionMs_(0), lastValidPosition_(3500), begun_(false), history_{},
+      historyCapacity_(8), historyCount_(0), historyNext_(0)
 {
+    resetAnalogCalibration();
     linePattern(0, last_.padrao);
     last_.ultimaPosicaoValida = 3500;
 }
 
 bool LineSensor::begin(const uint8_t pins[8], TipoQTR type, uint8_t emitterPin)
 {
+    type_ = type;
+    memcpy(pins_, pins, sizeof(pins_));
     if (type == QTR_8A)
     {
-        qtr_.setTypeAnalog();
-#if defined(ARDUINO_ARCH_ESP32)
-        analogReadResolution(10); // QTRSensors 4.0.0 usa maximo analogico 1023.
-#endif
+        prepararADC();
+        for (uint8_t i = 0; i < 8; ++i)
+        {
+            pinMode(pins_[i], INPUT);
+        }
     }
     else
     {
         qtr_.setTypeRC();
+        qtr_.setSensorPins(pins, 8);
+        if (emitterPin != 0xFF)
+        {
+            qtr_.setEmitterPin(emitterPin);
+        }
     }
-    qtr_.setSensorPins(pins, 8);
-    if (emitterPin != 0xFF)
-    {
-        qtr_.setEmitterPin(emitterPin);
-    }
+    resetAnalogCalibration();
     begun_ = true;
     lastDetectionMs_ = millis();
     clearHistory();
     return true;
+}
+
+void LineSensor::readAnalogRaw(uint16_t output[8]) const
+{
+    prepararADC();
+    for (uint8_t sensor = 0; sensor < 8; ++sensor)
+    {
+        uint32_t sum = 0;
+        for (uint8_t sample = 0; sample < ANALOG_SAMPLES_PER_READ; ++sample)
+        {
+            sum += static_cast<uint16_t>(analogRead(pins_[sensor]));
+        }
+        const uint32_t rounded =
+            (sum + ANALOG_SAMPLES_PER_READ / 2U) / ANALOG_SAMPLES_PER_READ;
+        output[sensor] = static_cast<uint16_t>(
+            rounded > board::ADC_MAX_VALUE ? board::ADC_MAX_VALUE : rounded);
+    }
+}
+
+void LineSensor::resetAnalogCalibration()
+{
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        analogMinimum_[i] = board::ADC_MAX_VALUE;
+        analogMaximum_[i] = 0;
+    }
+    analogCalibrationInitialized_ = false;
+}
+
+bool LineSensor::calibrationInitialized() const
+{
+    return type_ == QTR_8A ? analogCalibrationInitialized_ : qtr_.calibrationOn.initialized;
+}
+
+void LineSensor::calibrateAnalogStep()
+{
+    uint16_t stepMinimum[8];
+    uint16_t stepMaximum[8]{};
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        stepMinimum[i] = board::ADC_MAX_VALUE;
+    }
+
+    for (uint8_t reading = 0; reading < ANALOG_CALIBRATION_READS; ++reading)
+    {
+        uint16_t raw[8];
+        readAnalogRaw(raw);
+        for (uint8_t i = 0; i < 8; ++i)
+        {
+            if (raw[i] < stepMinimum[i])
+            {
+                stepMinimum[i] = raw[i];
+            }
+            if (raw[i] > stepMaximum[i])
+            {
+                stepMaximum[i] = raw[i];
+            }
+        }
+    }
+
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        // Mesmo filtro da QTRSensors: os extremos internos do lote evitam que
+        // uma unica amostra espuria amplie toda a faixa de calibracao.
+        if (stepMaximum[i] < analogMinimum_[i])
+        {
+            analogMinimum_[i] = stepMaximum[i];
+        }
+        if (stepMinimum[i] > analogMaximum_[i])
+        {
+            analogMaximum_[i] = stepMinimum[i];
+        }
+    }
+    analogCalibrationInitialized_ = true;
+}
+
+void LineSensor::prepararADC() const
+{
+#if defined(ARDUINO_ARCH_ESP32)
+    if (type_ == QTR_8A)
+    {
+        analogReadResolution(board::ADC_RESOLUTION_BITS);
+    }
+#endif
 }
 
 void LineSensor::readRaw(uint16_t output[8])
@@ -47,20 +140,29 @@ void LineSensor::readRaw(uint16_t output[8])
         memset(output, 0, sizeof(uint16_t) * 8);
         return;
     }
-    qtr_.read(output);
+    if (type_ == QTR_8A)
+    {
+        readAnalogRaw(output);
+    }
+    else
+    {
+        qtr_.read(output);
+    }
 }
 
 void LineSensor::calibrateRaw(const uint16_t raw[8], uint16_t output[8]) const
 {
-    if (!qtr_.calibrationOn.initialized)
+    if (!calibrationInitialized())
     {
         memset(output, 0, sizeof(uint16_t) * 8);
         return;
     }
     for (uint8_t i = 0; i < 8; ++i)
     {
-        const uint16_t minimum = qtr_.calibrationOn.minimum[i];
-        const uint16_t maximum = qtr_.calibrationOn.maximum[i];
+        const uint16_t minimum =
+            type_ == QTR_8A ? analogMinimum_[i] : qtr_.calibrationOn.minimum[i];
+        const uint16_t maximum =
+            type_ == QTR_8A ? analogMaximum_[i] : qtr_.calibrationOn.maximum[i];
         if (maximum <= minimum)
         {
             output[i] = 0;
@@ -140,7 +242,14 @@ void LineSensor::calibrateMs(uint32_t durationMs)
     const uint32_t start = millis();
     do
     {
-        qtr_.calibrate();
+        if (type_ == QTR_8A)
+        {
+            calibrateAnalogStep();
+        }
+        else
+        {
+            qtr_.calibrate();
+        }
         yield();
     } while (millis() - start < durationMs);
 }
@@ -153,19 +262,30 @@ void LineSensor::calibrateSamples(uint16_t samples)
     }
     for (uint16_t i = 0; i < samples; ++i)
     {
-        qtr_.calibrate();
+        if (type_ == QTR_8A)
+        {
+            calibrateAnalogStep();
+        }
+        else
+        {
+            qtr_.calibrate();
+        }
         yield();
     }
 }
 
 bool LineSensor::getCalibration(uint16_t minimum[8], uint16_t maximum[8]) const
 {
-    if (!qtr_.calibrationOn.initialized)
+    if (!calibrationInitialized())
     {
         return false;
     }
-    memcpy(minimum, qtr_.calibrationOn.minimum, sizeof(uint16_t) * 8);
-    memcpy(maximum, qtr_.calibrationOn.maximum, sizeof(uint16_t) * 8);
+    const uint16_t* sourceMinimum =
+        type_ == QTR_8A ? analogMinimum_ : qtr_.calibrationOn.minimum;
+    const uint16_t* sourceMaximum =
+        type_ == QTR_8A ? analogMaximum_ : qtr_.calibrationOn.maximum;
+    memcpy(minimum, sourceMinimum, sizeof(uint16_t) * 8);
+    memcpy(maximum, sourceMaximum, sizeof(uint16_t) * 8);
     return true;
 }
 
@@ -175,13 +295,26 @@ bool LineSensor::setCalibration(const uint16_t minimum[8], const uint16_t maximu
     {
         return false;
     }
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        if (minimum[i] >= maximum[i] ||
+            (type_ == QTR_8A && maximum[i] > board::ADC_MAX_VALUE))
+        {
+            return false;
+        }
+    }
+
+    if (type_ == QTR_8A)
+    {
+        memcpy(analogMinimum_, minimum, sizeof(analogMinimum_));
+        memcpy(analogMaximum_, maximum, sizeof(analogMaximum_));
+        analogCalibrationInitialized_ = true;
+        return true;
+    }
+
     if (!qtr_.calibrationOn.initialized)
     {
         qtr_.calibrate();
-    }
-    if (!qtr_.calibrationOn.initialized)
-    {
-        return false;
     }
     memcpy(qtr_.calibrationOn.minimum, minimum, sizeof(uint16_t) * 8);
     memcpy(qtr_.calibrationOn.maximum, maximum, sizeof(uint16_t) * 8);
@@ -200,6 +333,7 @@ uint32_t LineSensor::timeWithoutLine() const
 void LineSensor::resetCalibration()
 {
     qtr_.resetCalibration();
+    resetAnalogCalibration();
     last_ = {};
     linePattern(0, last_.padrao);
     last_.ultimaPosicaoValida = 3500;

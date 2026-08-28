@@ -214,8 +214,8 @@ class RoboS3
      * @brief Cadastra uma tecla de um conjunto resistivo em um unico GPIO ADC.
      * @param id ID unico de 0 a 254 usado nas consultas.
      * @param pino GPIO ADC do ESP32-S3, de 1 a 20; varias teclas podem compartilhar este pino.
-     * @param valorMinimo Inicio inclusivo da faixa ADC, de 0 a 1023.
-     * @param valorMaximo Fim inclusivo da faixa ADC, de 0 a 1023.
+     * @param valorMinimo Inicio inclusivo da faixa ADC de 12 bits, de 0 a 4095.
+     * @param valorMaximo Fim inclusivo da faixa ADC de 12 bits, de 0 a 4095.
      * @param debounceMs Tempo estavel para aceitar uma transicao; padrao 30 ms.
      * @return true quando cadastrado; false para ID/faixa invalida ou sobreposta,
      * conflito de uso do GPIO ou limite de 12 botoes.
