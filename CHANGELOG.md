@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.3
+
+- espelhamento lógico dos sensores QTR para barras montadas na orientação
+  oposta, incluindo leituras brutas/calibradas, máscara, posição e histórico;
+- cada calibração QTR por tempo ou quantidade de amostras começa com limites
+  novos e só substitui os anteriores quando os oito canais são válidos;
+  tentativas inválidas preservam a calibração anterior;
+- HC-SR04 limitado a uma medição por intervalo mínimo de 60 ms, reutilizando a
+  última leitura e seu timestamp nos acessos antecipados.
+- relatórios Serial organizados por seções e indicação de alterações de
+  calibração ainda não salvas.
+
 ## 0.4.1
 
 - correção da precedência da calibração dos motores: inversão, compensação e

@@ -84,7 +84,7 @@ struct LeituraDistancia
     uint16_t milimetros;        ///< Distancia em mm; 0 quando invalida.
     bool valida;                ///< true somente quando a medida pode ser usada.
     bool timeout;               ///< true quando o VL53L0X excedeu o tempo configurado.
-    uint32_t timestampMs;       ///< Instante da tentativa segundo millis().
+    uint32_t timestampMs;       ///< Instante da ultima medicao real segundo millis().
 };
 /**
  * @brief Padrao binario dos oito sensores de linha.

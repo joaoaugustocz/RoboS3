@@ -41,10 +41,19 @@ class UltrasonicSensor
         return begun_;
     }
 
+    /** @return Instante da ultima tentativa real de medicao. */
+    uint32_t lastMeasurementMs() const
+    {
+        return lastMeasurementMs_;
+    }
+
   private:
     alignas(UltraSonicDistanceSensor) uint8_t storage_[sizeof(UltraSonicDistanceSensor)];
     UltraSonicDistanceSensor* sensor_;
     bool begun_;
+    float lastDistanceCm_;
+    uint32_t lastMeasurementMs_;
+    bool hasMeasurement_;
 };
 
 } // namespace robos3

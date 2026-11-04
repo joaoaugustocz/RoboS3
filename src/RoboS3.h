@@ -91,6 +91,13 @@ class RoboS3
     void setTipoLinha(TipoLinha type);
 
     /**
+     * @brief Espelha a ordem logica dos oito sensores de linha.
+     * @param espelhados true quando S1...S8 estao montados da direita para a esquerda.
+     * @note Chame em cada inicializacao antes de begin(); a calibracao e mantida.
+     */
+    void espelharSensoresLinha(bool espelhados = true);
+
+    /**
      * @brief Substitui a pinagem completa da ponte H antes de begin().
      * @param ena Enable/PWM esquerdo. @param in1 Direcao esquerda 1.
      * @param in2 Direcao esquerda 2. @param in3 Direcao direita 1.
@@ -391,19 +398,19 @@ class RoboS3
 
     /**
      * @brief Faz uma aquisicao fisica sem aplicar a calibracao.
-     * @param output Vetor de oito uint16_t preenchido na ordem S1...S8.
+     * @param output Vetor de oito uint16_t preenchido na ordem logica S1...S8.
      */
     void lerLinhaBruta(uint16_t output[8]);
 
     /**
      * @brief Faz uma aquisicao e normaliza cada QTR para 0...1000.
-     * @param output Vetor de oito uint16_t preenchido na ordem S1...S8.
+     * @param output Vetor de oito uint16_t preenchido na ordem logica S1...S8.
      */
     void lerLinhaCalibrada(uint16_t output[8]);
 
     /**
      * @brief Faz uma leitura e retorna a mascara binaria dos sensores pretos.
-     * @return Mascara em que S1 e bit 7, S8 e bit 0 e preto fisico vale 1.
+     * @return Mascara em que S1 logico e bit 7, S8 logico e bit 0 e preto fisico vale 1.
      */
     uint8_t lerLinhaBinaria();
 
@@ -461,11 +468,18 @@ class RoboS3
     /**
      * @brief Calibra o QTR durante um intervalo bloqueante.
      * @param durationMs Duracao da coleta em milissegundos.
+     * @return true quando os oito canais produzem faixas validas; em caso de
+     * falha, a calibracao anterior permanece aplicada.
      */
-    void calibrarLinha(uint32_t durationMs = 5000);
+    bool calibrarLinha(uint32_t durationMs = 5000);
 
-    /** @brief Calibra o QTR de forma bloqueante. @param samples Quantidade de amostras. */
-    void calibrarLinhaAmostras(uint16_t samples);
+    /**
+     * @brief Calibra o QTR de forma bloqueante.
+     * @param samples Quantidade de amostras.
+     * @return true quando os oito canais produzem faixas validas; em caso de
+     * falha, a calibracao anterior permanece aplicada.
+     */
+    bool calibrarLinhaAmostras(uint16_t samples);
 
     /** @brief Define o limiar binario. @param threshold Valor calibrado de 0 a 1000. */
     void configurarLimiarLinha(uint16_t threshold);
@@ -740,7 +754,7 @@ class RoboS3
     void printMotores(Print& out = Serial) const;
 
     /**
-     * @brief Imprime a origem e todos os valores de calibracao atualmente aplicados.
+     * @brief Imprime a origem, os valores aplicados e o estado das alteracoes nao salvas.
      * @param out Destino Print; Serial por padrao.
      * @note begin() chama este metodo automaticamente depois de carregar a NVS.
      */
@@ -784,4 +798,5 @@ class RoboS3
     bool begun_;
     bool anguloZInvertido_;
     bool sensoresCorTrocados_;
+    bool calibracaoAlterada_;
 };

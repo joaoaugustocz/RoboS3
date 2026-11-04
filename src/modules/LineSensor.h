@@ -50,20 +50,32 @@ class LineSensor
 
     /**
      * @brief Faz leitura bruta.
-     * @param output Vetor de oito valores na ordem S1...S8. No QTR-8A, cada
+     * @param output Vetor de oito valores na ordem logica S1...S8. Com
+     * espelhamento, a ordem logica acompanha esquerda...direita. No QTR-8A, cada
      * valor usa os 12 bits do ESP32-S3 (0...4095); no QTR-8RC, representa o
      * tempo de descarga configurado pela QTRSensors.
      */
     void readRaw(uint16_t output[8]);
 
-    /** @brief Faz leitura calibrada. @param output Vetor de oito valores em 0...1000. */
+    /**
+     * @brief Faz leitura calibrada na ordem logica S1...S8.
+     * @param output Valores em 0...1000; com espelhamento, esquerda...direita.
+     */
     void readCalibrated(uint16_t output[8]);
 
-    /** @brief Executa calibracao bloqueante. @param durationMs Duracao em milissegundos. */
-    void calibrateMs(uint32_t durationMs);
+    /**
+     * @brief Executa calibracao bloqueante e aplica os extremos somente se validos.
+     * @param durationMs Duracao em milissegundos.
+     * @return true quando os oito canais produziram extremos validos.
+     */
+    bool calibrateMs(uint32_t durationMs);
 
-    /** @brief Executa calibracao bloqueante. @param samples Quantidade de amostras. */
-    void calibrateSamples(uint16_t samples);
+    /**
+     * @brief Executa calibracao bloqueante e aplica os extremos somente se validos.
+     * @param samples Quantidade de amostras.
+     * @return true quando os oito canais produziram extremos validos.
+     */
+    bool calibrateSamples(uint16_t samples);
 
     /**
      * @brief Copia os extremos da calibracao atual.
@@ -80,6 +92,9 @@ class LineSensor
      * @return false se algum minimo nao for menor que o maximo correspondente.
      */
     bool setCalibration(const uint16_t minimum[8], const uint16_t maximum[8]);
+
+    /** @brief Espelha a ordem logica de S1...S8 sem alterar a pinagem fisica. */
+    void setMirrored(bool mirrored);
 
     /** @brief Descarta os extremos QTR coletados e limpa o historico de linha. */
     void resetCalibration();
@@ -132,12 +147,17 @@ class LineSensor
 
   private:
     static constexpr uint8_t ANALOG_SAMPLES_PER_READ = 4;
-    static constexpr uint8_t ANALOG_CALIBRATION_READS = 10;
+    static constexpr uint8_t CALIBRATION_READS_PER_STEP = 10;
 
     void prepararADC() const;
+    void readRawPhysical(uint16_t output[8]);
     void readAnalogRaw(uint16_t output[8]) const;
-    void calibrateAnalogStep();
+    static void reverseSensorOrder(uint16_t values[8]);
+    void calibrateAnalogStep(uint16_t minimum[8], uint16_t maximum[8]) const;
+    void calibrateStep(uint16_t minimum[8], uint16_t maximum[8]);
     void resetAnalogCalibration();
+    void resetCalibrationExtremes();
+    void resetReadState();
     bool calibrationInitialized() const;
     void calibrateRaw(const uint16_t raw[8], uint16_t output[8]) const;
     uint16_t positionFrom(const uint16_t calibrated[8], bool& valid);
@@ -156,6 +176,7 @@ class LineSensor
     uint32_t lastDetectionMs_;
     uint16_t lastValidPosition_;
     bool begun_;
+    bool mirrored_;
     CasoLinha history_[MAX_HISTORICO_LINHA];
     uint8_t historyCapacity_;
     uint8_t historyCount_;

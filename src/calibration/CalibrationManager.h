@@ -43,8 +43,12 @@ class CalibrationManager
     bool load();
     /** @return Resultado de RoboS3::apagarCalibracao(). */
     bool reset();
-    /** @brief Calibra a linha. @param durationMs Duracao em milissegundos. */
-    void calibrateLine(uint32_t durationMs);
+    /**
+     * @brief Calibra a linha.
+     * @param durationMs Duracao em milissegundos.
+     * @return true quando os oito canais produzem faixas validas.
+     */
+    bool calibrateLine(uint32_t durationMs);
     /** @brief Calibra a IMU. @param durationMs Duracao em milissegundos. */
     void calibrateImu(uint32_t durationMs);
 

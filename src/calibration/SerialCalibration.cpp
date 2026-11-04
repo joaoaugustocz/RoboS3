@@ -7,6 +7,34 @@
 namespace robos3
 {
 
+namespace
+{
+void printCommandResult(Print& out, bool ok, const __FlashStringHelper* success,
+                        const __FlashStringHelper* failure)
+{
+    out.print(ok ? F("[RoboS3][OK] ") : F("[RoboS3][ERRO] "));
+    out.println(ok ? success : failure);
+}
+
+void printCommandSuccess(Print& out, const __FlashStringHelper* message)
+{
+    out.print(F("[RoboS3][OK] "));
+    out.println(message);
+}
+
+void printCommandInfo(Print& out, const __FlashStringHelper* message)
+{
+    out.print(F("[RoboS3][INFO] "));
+    out.println(message);
+}
+
+void printCommandError(Print& out, const __FlashStringHelper* message)
+{
+    out.print(F("[RoboS3][ERRO] "));
+    out.println(message);
+}
+} // namespace
+
 SerialCalibration::SerialCalibration(CalibrationManager& m)
     : manager_(m), stream_(nullptr), buffer_{}, length_(0)
 {
@@ -14,8 +42,12 @@ SerialCalibration::SerialCalibration(CalibrationManager& m)
 void SerialCalibration::begin(Stream& s)
 {
     stream_ = &s;
-    stream_->println(F("=====================================\n          RoboS3 "
-                       "Calibration\n=====================================\nDigite: help"));
+    stream_->println();
+    stream_->println(F("======================================================================"));
+    stream_->println(F("RoboS3 | INTERFACE SERIAL DE CALIBRACAO"));
+    stream_->println(F("======================================================================"));
+    stream_->println(F("Digite 'help' para ver comandos e formatos."));
+    stream_->println();
 }
 void SerialCalibration::update()
 {
@@ -47,18 +79,30 @@ void SerialCalibration::update()
 }
 void SerialCalibration::help()
 {
-    stream_->println(
-        F("SISTEMA: help | status | save | load | reset\n"
-          "LINHA: line read|raw|calibrated | line calibrate <ms> | line threshold <0-1000> | line "
-          "save\n"
-          "MOTORES: motor status|stop|brake | motor move <E> <D>\n"
-          "         motor min <left|right> <forward|reverse> <0-100>\n"
-          "         motor compensation <left|right> <forward|reverse> <fator>\n"
-          "CORES: color read|rgb|hsv <left|right> | color calibrate <lado> <cor> [amostras]\n"
-          "       color hue <lado> <cor> <hmin> <hmax>\n"
-          "       color hsv-range <lado> <cor> <hmin> <hmax> <smin> <smax> <vmin> <vmax>\n"
-          "       color gain <lado> <1|4|16|60> | color integration <lado> <2|24|50|101|154|600>\n"
-          "IMU: imu read|status|zero | imu calibrate <ms>"));
+    stream_->println(F("COMANDOS DISPONIVEIS"));
+    stream_->println(F("----------------------------------------------------------------------"));
+    stream_->println(F("SISTEMA"));
+    stream_->println(F("  help | status | save | load | reset"));
+    stream_->println(F("LINHA"));
+    stream_->println(F("  line read | line raw | line calibrated"));
+    stream_->println(F("  line calibrate <ms> | line threshold <0-1000> | line save"));
+    stream_->println(F("MOTORES"));
+    stream_->println(F("  motor status | motor stop | motor brake | motor move <E> <D>"));
+    stream_->println(F("  motor min <left|right> <forward|reverse> <0-100>"));
+    stream_->println(F("  motor compensation <left|right> <forward|reverse> <fator>"));
+    stream_->println(F("CORES"));
+    stream_->println(F("  color read|rgb|hsv <left|right>"));
+    stream_->println(F("  color calibrate <left|right> <color> [samples]"));
+    stream_->println(F("  color hue <left|right> <color> <hmin> <hmax>"));
+    stream_->println(F("  color hsv-range <left|right> <color>"));
+    stream_->println(F("      <hmin> <hmax> <smin> <smax> <vmin> <vmax>"));
+    stream_->println(F("  color gain <left|right> <1|4|16|60>"));
+    stream_->println(F("  color integration <left|right> <2|24|50|101|154|600>"));
+    stream_->println(F("IMU"));
+    stream_->println(F("  imu read | imu status | imu zero | imu calibrate <ms>"));
+    stream_->println(F("----------------------------------------------------------------------"));
+    stream_->println(F("Lados: left/right. Sentidos: forward/reverse."));
+    stream_->println(F("Cores: black, white, red, green, blue, yellow, orange, purple."));
 }
 
 static SensorCor parseSide(const char* s)
@@ -127,7 +171,15 @@ void SerialCalibration::execute(char* line)
         bool ok = !strcmp(cmd, "save")   ? manager_.save()
                   : !strcmp(cmd, "load") ? manager_.load()
                                          : manager_.reset();
-        stream_->println(ok ? F("OK") : F("ERRO"));
+        const __FlashStringHelper* success =
+            !strcmp(cmd, "save")   ? F("Calibracao salva na NVS.")
+            : !strcmp(cmd, "load") ? F("Calibracao carregada da NVS.")
+                                    : F("Calibracao restaurada para os padroes.");
+        const __FlashStringHelper* failure =
+            !strcmp(cmd, "save")   ? F("Falha ao salvar calibracao na NVS.")
+            : !strcmp(cmd, "load") ? F("Nao ha calibracao valida para carregar.")
+                                    : F("NVS nao apagada; padroes aplicados apenas em memoria.");
+        printCommandResult(*stream_, ok, success, failure);
         return;
     }
     if (!strcmp(cmd, "line"))
@@ -148,22 +200,32 @@ void SerialCalibration::execute(char* line)
             if (!strcmp(sub, "raw"))
             {
                 robo.lerLinhaBruta(v);
+                stream_->print(F("[RoboS3][QTR] Bruto      S1..S8: "));
             }
             else
             {
                 robo.lerLinhaCalibrada(v);
+                stream_->print(F("[RoboS3][QTR] Calibrado  S1..S8: "));
             }
-            for (auto x : v)
+            stream_->print('[');
+            for (uint8_t i = 0; i < 8; ++i)
             {
-                stream_->print(x);
-                stream_->print(' ');
+                stream_->print(v[i]);
+                if (i < 7)
+                {
+                    stream_->print(F(", "));
+                }
             }
+            stream_->print(']');
             stream_->println();
         }
         else if (!strcmp(sub, "calibrate"))
         {
             char* v = strtok(nullptr, " ");
-            manager_.calibrateLine(v ? strtoul(v, nullptr, 10) : 5000);
+            const bool calibrated = manager_.calibrateLine(v ? strtoul(v, nullptr, 10) : 5000);
+            printCommandResult(*stream_, calibrated,
+                               F("Calibracao QTR concluida e aplicada."),
+                               F("Faixa invalida; calibracao anterior mantida, se existente."));
         }
         else if (!strcmp(sub, "threshold"))
         {
@@ -171,11 +233,15 @@ void SerialCalibration::execute(char* line)
             if (v)
             {
                 robo.configurarLimiarLinha(atoi(v));
+                stream_->print(F("[RoboS3][OK] Limiar do QTR atualizado (0..1000): "));
+                stream_->println(atoi(v));
             }
         }
         else if (!strcmp(sub, "save"))
         {
-            stream_->println(manager_.save() ? F("OK") : F("ERRO"));
+            const bool saved = manager_.save();
+            printCommandResult(*stream_, saved, F("Calibracao salva na NVS."),
+                               F("Falha ao salvar calibracao na NVS."));
         }
         return;
     }
@@ -192,15 +258,18 @@ void SerialCalibration::execute(char* line)
             if (l && r)
             {
                 manager_.testMotors(atoi(l), atoi(r));
+                printCommandInfo(*stream_, F("Teste ativo; motores param automaticamente em ate 2 s."));
             }
         }
         else if (!strcmp(sub, "stop"))
         {
             manager_.stopMotors();
+            printCommandSuccess(*stream_, F("Motores parados."));
         }
         else if (!strcmp(sub, "brake"))
         {
             manager_.stopMotors(true);
+            printCommandSuccess(*stream_, F("Freio aplicado."));
         }
         else if (!strcmp(sub, "status"))
         {
@@ -214,10 +283,12 @@ void SerialCalibration::execute(char* line)
                 if (!strcmp(sub, "min"))
                 {
                     robo.configurarMinimoMovimento(parseMotor(m), parseDirection(d), atoi(v));
+                    printCommandSuccess(*stream_, F("Minimo de movimento atualizado."));
                 }
                 else
                 {
                     robo.configurarCompensacaoMotor(parseMotor(m), parseDirection(d), atof(v));
+                    printCommandSuccess(*stream_, F("Compensacao do motor atualizada."));
                 }
             }
         }
@@ -234,20 +305,28 @@ void SerialCalibration::execute(char* line)
         if (!strcmp(sub, "read") || !strcmp(sub, "rgb") || !strcmp(sub, "hsv"))
         {
             LeituraCor r = robo.lerDadosCor(s);
+            stream_->print(F("[RoboS3][COR]["));
+            stream_->print(r.valida ? F("OK") : F("FALHA"));
+            stream_->print(F("] Sensor "));
+            stream_->print(s == COR_DIREITA ? F("direito") : F("esquerdo"));
+            stream_->print(F(" | "));
             if (!strcmp(sub, "hsv"))
             {
-                stream_->print(r.hsv.h);
-                stream_->print(' ');
-                stream_->print(r.hsv.s);
-                stream_->print(' ');
-                stream_->println(r.hsv.v);
+                stream_->print(F("H="));
+                stream_->print(r.hsv.h, 1);
+                stream_->print(F(" deg | S="));
+                stream_->print(r.hsv.s, 1);
+                stream_->print(F("% | V="));
+                stream_->print(r.hsv.v, 1);
+                stream_->println('%');
             }
             else
             {
+                stream_->print(F("R="));
                 stream_->print(r.rgb.r);
-                stream_->print(' ');
+                stream_->print(F(" G="));
                 stream_->print(r.rgb.g);
-                stream_->print(' ');
+                stream_->print(F(" B="));
                 stream_->println(r.rgb.b);
             }
             return;
@@ -258,6 +337,7 @@ void SerialCalibration::execute(char* line)
             if (v)
             {
                 robo.setGanhoCor(s, parseGain(atoi(v)));
+                printCommandSuccess(*stream_, F("Ganho do sensor de cor atualizado."));
             }
             return;
         }
@@ -267,6 +347,7 @@ void SerialCalibration::execute(char* line)
             if (v)
             {
                 robo.setTempoIntegracaoCor(s, parseIntegration(atoi(v)));
+                printCommandSuccess(*stream_, F("Tempo de integracao do sensor de cor atualizado."));
             }
             return;
         }
@@ -279,7 +360,13 @@ void SerialCalibration::execute(char* line)
         if (!strcmp(sub, "calibrate"))
         {
             char* n = strtok(nullptr, " ");
+            if (!robo.corDisponivel(s))
+            {
+                printCommandError(*stream_, F("Calibracao cancelada: sensor TCS34725 indisponivel."));
+                return;
+            }
             robo.calibrarCor(s, c, n ? atoi(n) : 30);
+            printCommandInfo(*stream_, F("Faixa HSV calibrada; use 'save' para persistir."));
         }
         else if (!strcmp(sub, "hue"))
         {
@@ -287,6 +374,7 @@ void SerialCalibration::execute(char* line)
             if (a && b)
             {
                 robo.definirFaixaH(s, c, atof(a), atof(b));
+                printCommandSuccess(*stream_, F("Faixa de matiz atualizada."));
             }
         }
         else if (!strcmp(sub, "hsv-range"))
@@ -302,6 +390,7 @@ void SerialCalibration::execute(char* line)
                 v[i] = atof(t);
             }
             robo.definirFaixaHSV(s, c, v[0], v[1], v[2], v[3], v[4], v[5]);
+            printCommandSuccess(*stream_, F("Faixa HSV atualizada."));
         }
         return;
     }
@@ -319,20 +408,29 @@ void SerialCalibration::execute(char* line)
         }
         else if (!strcmp(sub, "status"))
         {
-            stream_->println(robo.imuDisponivel() ? F("OK") : F("ERRO"));
+            const bool available = robo.imuDisponivel();
+            printCommandResult(*stream_, available, F("MPU6050 detectada na inicializacao."),
+                               F("MPU6050 nao respondeu na inicializacao."));
         }
         else if (!strcmp(sub, "zero"))
         {
             robo.zerarAnguloZ();
+            printCommandSuccess(*stream_, F("Angulo Z relativo zerado."));
         }
         else if (!strcmp(sub, "calibrate"))
         {
             char* v = strtok(nullptr, " ");
+            if (!robo.imuDisponivel())
+            {
+                printCommandError(*stream_, F("Calibracao cancelada: MPU6050 indisponivel."));
+                return;
+            }
             manager_.calibrateImu(v ? strtoul(v, nullptr, 10) : 3000);
+            printCommandInfo(*stream_, F("Offsets da IMU recalculados; use 'save' para persistir."));
         }
         return;
     }
-    stream_->println(F("Comando desconhecido. Digite help."));
+    printCommandError(*stream_, F("Comando desconhecido. Digite 'help'."));
 }
 
 } // namespace robos3

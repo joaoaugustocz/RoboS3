@@ -2,7 +2,7 @@
 
 Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**, baseada no **ESP32-S3-N8R2**. A API começa simples (`frente`, `parar`, `seguirLinha`) e preserva acesso a valores brutos, calibração, máscara, PID, RGB/HSV/HSL e IMU para o aluno evoluir sem trocar de biblioteca.
 
-**Versão estável:** 0.4.2 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
+**Versão estável:** 0.4.3 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
 
 ## Conteúdo
 
@@ -120,7 +120,7 @@ void loop()
 
 `begin()` deixa os motores parados e tenta inicializar cada módulo independentemente. Ele retorna `true` somente quando todos os módulos previstos na PCB respondem. Quando algo falha, o próprio `begin()` imprime na `Serial` qual módulo não respondeu e uma indicação do que verificar. Inicie a `Serial` antes dele para visualizar essas mensagens.
 
-Em toda inicialização, `begin()` também imprime se a calibração veio da NVS ou dos valores padrão e lista QTR, limiar, compensações/inversões dos motores, mapeamentos E/D, faixas ativas dos sensores de cor e offsets da IMU. Use `robo.printCalibracao()` para repetir esse relatório durante o diagnóstico.
+Em toda inicialização, `begin()` também imprime a origem base da calibração, se há alterações em memória ainda não salvas e lista QTR, limiar, compensações/inversões dos motores, mapeamentos E/D, faixas ativas dos sensores de cor e offsets da IMU. Use `robo.printCalibracao()` para repetir esse relatório durante o diagnóstico.
 
 ### Serial e velocidade de comunicação
 
@@ -172,12 +172,25 @@ O padrão usa QTR-8A com aquisição nativa de **12 bits** no ESP32-S3: a leitur
 Uma escala nominal de 12 bits fornece mais níveis, mas não garante 12 bits efetivos de precisão: ruído, alimentação e características do ADC ainda influenciam a medida. Calibre o conjunto na pista real. Calibrações QTR-8A salvas pela versão 0.4.1 ou anterior são convertidas automaticamente de `0…1023` para `0…4095` ao carregar; chame `salvarCalibracao()` para persistir definitivamente o novo formato.
 
 ```cpp
-robo.calibrarLinha(5000);       // tempo em ms
+if (!robo.calibrarLinha(5000)) // tempo em ms
+{
+    Serial.println("Calibracao invalida; calibracao anterior mantida.");
+    return;
+}
 robo.configurarLimiarLinha(500);
 LeituraLinha linha = robo.lerLinha();
 ```
 
-`lerLinha()` faz uma aquisição física bruta e deriva dela valores calibrados, `BBBPPBBB`, máscara, contagem e posição. S1 é o bit 7; S8 é o bit 0. A posição vai de 0 a 7000, com centro 3500. Há suporte a `LINHA_PRETA` e `LINHA_BRANCA`, QTR-8A e QTR-8RC, pinagem customizada e getter const da última leitura.
+`calibrarLinha()` e `calibrarLinhaAmostras()` retornam `true` somente quando os oito sensores produzem faixas com minimo menor que maximo. Se algum canal nao variar o suficiente, retornam `false` e preservam a calibracao valida anterior, quando houver. Confira o retorno antes de salvar.
+
+`lerLinha()` faz uma aquisição física bruta e deriva dela valores calibrados, `BBBPPBBB`, máscara, contagem e posição. Na ordem lógica, S1 é o bit 7 e S8 é o bit 0; com espelhamento habilitado, essa ordem acompanha esquerda→direita. A posição vai de 0 a 7000, com centro 3500. Há suporte a `LINHA_PRETA` e `LINHA_BRANCA`, QTR-8A e QTR-8RC, pinagem customizada e getter const da última leitura.
+
+Se a barra QTR estiver montada com S1 à direita e S8 à esquerda, espelhe a ordem lógica em cada inicialização, antes de `begin()`. As leituras brutas, calibradas, máscara, padrão P/B, posição e histórico passam a seguir a ordem lógica esquerda→direita; as calibrações por sensor continuam associadas ao canal físico correspondente.
+
+```cpp
+robo.espelharSensoresLinha(); // S1...S8 montados da direita para a esquerda
+robo.begin();
+```
 
 ### Qual leitura de linha usar
 
@@ -205,9 +218,9 @@ if (linha.posicaoValida)
 
 | Campo ou função | Tipo/escala | Como usar |
 |---|---|---|
-| `bruto[8]` | `uint16_t[8]` | Aquisição física na ordem S1…S8; QTR-8A usa `0…4095`, enquanto QTR-8RC retorna tempo de descarga. |
-| `calibrado[8]` | `uint16_t[8]`, `0…1000` | Valores normalizados pelos mínimos e máximos calibrados. |
-| `mascara` | `uint8_t` | S1 é bit 7, S8 é bit 0 e preto físico vale 1. |
+| `bruto[8]` | `uint16_t[8]` | Aquisição na ordem lógica S1…S8; com espelhamento habilitado, segue esquerda→direita. QTR-8A usa `0…4095`, enquanto QTR-8RC retorna tempo de descarga. |
+| `calibrado[8]` | `uint16_t[8]`, `0…1000` | Valores normalizados na ordem lógica S1…S8. |
+| `mascara` | `uint8_t` | S1 lógico é bit 7, S8 lógico é bit 0 e preto físico vale 1. |
 | `caso` | `PadraoLinha` | A mesma máscara com nome legível, como `BBBPPBBB`. |
 | `padrao[9]` | texto terminado em zero | Representação P/B pronta para impressão. |
 | `quantidadePretos` | `0…8` | Quantidade de sensores sobre preto físico. |
@@ -225,7 +238,7 @@ if (linha.posicaoValida)
 
 ### Padrões P/B e binários
 
-`PadraoLinha` possui os 256 casos possíveis. `P` significa preto físico/bit `1`, `B` significa branco físico/bit `0`, e os caracteres seguem S1 até S8:
+`PadraoLinha` possui os 256 casos possíveis. `P` significa preto físico/bit `1`, `B` significa branco físico/bit `0`, e os caracteres seguem a ordem lógica S1 até S8:
 
 ```cpp
 LeituraLinha linha = robo.lerLinha();
@@ -327,7 +340,7 @@ void loop()
 }
 ```
 
-`LeituraDistancia` contém `id`, `sensor`, `tipo`, `centimetros`, `milimetros`, `valida`, `timeout` e `timestampMs`. Verifique `valida` antes de usar a distância. Em leitura inválida, `centimetros` vale `NAN` e `milimetros` vale zero. `timeout` distingue a expiração de uma leitura VL53L0X de um sensor apenas indisponível.
+`LeituraDistancia` contém `id`, `sensor`, `tipo`, `centimetros`, `milimetros`, `valida`, `timeout` e `timestampMs`. Verifique `valida` antes de usar a distância. Em leitura inválida, `centimetros` vale `NAN` e `milimetros` vale zero. `timeout` distingue a expiração de uma leitura VL53L0X de um sensor apenas indisponível. O HC-SR04 dispara no máximo uma medição a cada 60 ms; chamadas mais rápidas reutilizam o último resultado, e `timestampMs` informa quando ocorreu a última medição real.
 
 Os IDs padrões são `DISTANCIA_ULTRASSOM_1`/`DISTANCIA_ULTRASSOM` para ULTRA1 e `DISTANCIA_ULTRASSOM_2` para ULTRA2. Os métodos históricos sem ID, como `distanciaCM()` e `temObstaculo(20)`, continuam usando ULTRA1. Os dois HC-SR04 são habilitados por padrão; os VL53L0X são opcionais e só participam do `begin()` depois de cadastrados ou configurados. Há dois slots para cada tecnologia; IDs de 0 a 254 precisam ser únicos, pois 255 é reservado para `DISTANCIA_DESCONHECIDA`. `adicionarSensorDistancia()` retorna `false` quando o cadastro é inválido ou não existe slot livre.
 
@@ -534,7 +547,7 @@ Use `@return` em funções não `void`, documente cada `@param`, declare unidade
 | `corDisponivel(sensor)` | Informa se o TCS34725 de `COR_ESQUERDA` ou `COR_DIREITA` está disponível. |
 | `printStatus(out)` | Imprime o estado dos módulos; o destino padrão é `Serial`. |
 | `printErrosInicializacao(out)` | Imprime somente os módulos que falharam e uma indicação do ponto a verificar. |
-| `void printCalibracao(Print& out = Serial) const` | Imprime origem NVS/padrão e valores QTR, motores, cores e offsets IMU; `begin()` já chama automaticamente. |
+| `void printCalibracao(Print& out = Serial) const` | Imprime origem base, valores QTR/motores/cores/IMU e se há alterações em memória ainda não salvas; `begin()` já chama automaticamente. |
 | `setDebugLevel(nivel)` | Seleciona `DEBUG_OFF`, `DEBUG_ERROR`, `DEBUG_INFO` ou `DEBUG_VERBOSE`. |
 
 ### 2. Motores e ponte H L298N
@@ -564,7 +577,7 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | `lerLinha()` | Retorna `LeituraLinha`: dados brutos, calibrados, máscara, padrão, posição e tempo sem linha. |
 | `lerLinhaBruta(saida)` | Preenche `uint16_t saida[8]` com a leitura física. |
 | `lerLinhaCalibrada(saida)` | Preenche `uint16_t saida[8]` com valores `0…1000`. |
-| `lerLinhaBinaria()` | Retorna a máscara de sensores pretos: S1 é bit 7 e S8 é bit 0. |
+| `lerLinhaBinaria()` | Retorna a máscara de sensores pretos: S1 lógico é bit 7 e S8 lógico é bit 0. |
 | `lerPadraoLinha()` | Retorna diretamente um `PadraoLinha`, como `BBBPPBBB`. |
 | `ultimaLeituraLinha()` | Retorna a última `LeituraLinha`, sem nova aquisição. |
 | `tempoSemLinha()` | Retorna milissegundos desde a última detecção válida. |
@@ -574,8 +587,8 @@ Velocidades aceitam `-100` a `100`: positivo é frente, negativo é ré e zero p
 | `copiarUltimosCasosLinha(saida, maximo)` | Copia somente `PadraoLinha`, do mais novo para o mais antigo. |
 | `copiarHistoricoLinha(saida, maximo)` | Copia `CasoLinha` com início e duração, do mais novo para o mais antigo. |
 | `padraoLinhaTexto(caso, saida)` | Converte qualquer enum P/B para `char saida[9]`. |
-| `calibrarLinha(ms)` | Para os motores e coleta extremos por tempo; padrão 5000 ms. É bloqueante. |
-| `calibrarLinhaAmostras(amostras)` | Variante bloqueante por quantidade de amostras. |
+| `calibrarLinha(ms)` | Para os motores e coleta extremos por tempo; retorna `bool`, é bloqueante e usa 5000 ms por padrão. |
+| `calibrarLinhaAmostras(amostras)` | Variante bloqueante por quantidade de amostras; retorna `bool`. |
 | `configurarLimiarLinha(limiar)` | Define o limiar binário `0…1000`; inicial 500. |
 | `erroLinha(centro)` | Retorna `posição - centro`; centro padrão 3500. |
 | `printLinha(out)` | Imprime valores, padrão, máscara, posição e tempo sem linha. |
@@ -670,6 +683,7 @@ Chame estes métodos somente antes de `begin()`.
 | `definePinsQTR(s1, …, s8, emitter)` | Define os oito GPIOs QTR e emitter opcional; use `0xFF` quando não existir emitter. |
 | `setTipoQTR(tipo)` | Seleciona `QTR_8A` ou `QTR_8RC`. |
 | `setTipoLinha(tipo)` | Seleciona `LINHA_PRETA` ou `LINHA_BRANCA`. |
+| `espelharSensoresLinha(espelhados)` | Espelha a ordem lógica S1…S8 sem alterar os GPIOs configurados. |
 | `definePinsPonteH(ena, in1, in2, in3, in4, enb)` | Define toda a pinagem L298N. |
 | `definePinsUltrassom(trigger, echo)` | Compatibilidade: redefine o ULTRA1. |
 | `configurarUltrassom(sensor, trigger, echo, maximoCm)` | Configura `DISTANCIA_ULTRASSOM_1` ou `_2`. |
@@ -704,9 +718,9 @@ Chame estes métodos somente antes de `begin()`.
 
 | Estrutura/campo | Unidade ou domínio | Observação |
 |---|---|---|
-| `LeituraLinha.bruto[8]` | leitura física do QTR | Ordem S1…S8; QTR-8A usa ADC `0…4095`, QTR-8RC usa tempo de descarga. |
-| `LeituraLinha.calibrado[8]` | `0…1000` | Valores normalizados pelos extremos de calibração. |
-| `LeituraLinha.mascara` / `.caso` | byte / `PadraoLinha` | S1 é bit 7, S8 é bit 0 e preto físico vale 1. |
+| `LeituraLinha.bruto[8]` | leitura bruta do QTR | Ordem lógica S1…S8; com espelhamento, esquerda→direita. QTR-8A usa ADC `0…4095`; QTR-8RC usa tempo de descarga. |
+| `LeituraLinha.calibrado[8]` | `0…1000` | Valores normalizados na ordem lógica S1…S8. |
+| `LeituraLinha.mascara` / `.caso` | byte / `PadraoLinha` | S1 lógico é bit 7, S8 lógico é bit 0 e preto físico vale 1. |
 | `LeituraLinha.padrao[9]` | texto P/B | O nono caractere é o terminador nulo. |
 | `LeituraLinha.quantidadePretos` | `0…8` | Quantidade de bits pretos na máscara. |
 | `LeituraLinha.posicao` | `0…7000` | Centro geométrico 3500; confira `posicaoValida` antes de usar. |

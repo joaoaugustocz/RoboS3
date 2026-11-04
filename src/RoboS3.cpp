@@ -7,12 +7,143 @@
 
 using namespace robos3;
 
+namespace
+{
+constexpr const char* PRINT_RULE =
+    "======================================================================";
+constexpr const char* PRINT_DIVIDER =
+    "----------------------------------------------------------------------";
+
+void printReportStart(Print& out, const __FlashStringHelper* title)
+{
+    out.println();
+    out.println(PRINT_RULE);
+    out.print(F("RoboS3 | "));
+    out.println(title);
+    out.println(PRINT_RULE);
+}
+
+void printReportEnd(Print& out)
+{
+    out.println(PRINT_RULE);
+}
+
+void printSection(Print& out, const __FlashStringHelper* title)
+{
+    out.println();
+    out.print(F("[ "));
+    out.print(title);
+    out.println(F(" ]"));
+    out.println(PRINT_DIVIDER);
+}
+
+void printModuleStatus(Print& out, const char* name, bool enabled, bool ready)
+{
+    out.print(F("  "));
+    out.print(name);
+    const size_t nameLength = strlen(name);
+    for (size_t i = nameLength; i < 25; ++i)
+    {
+        out.print(' ');
+    }
+    out.print(F(" | "));
+    out.println(!enabled ? F("DESATIVADO") : ready ? F("OK") : F("FALHA"));
+}
+
+void printVector8(Print& out, const char* label, const uint16_t values[8])
+{
+    out.print(F("  "));
+    out.print(label);
+    out.print(F(": ["));
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        if (i)
+        {
+            out.print(F(", "));
+        }
+        out.print(values[i]);
+    }
+    out.println(']');
+}
+
+const char* colorName(CorDetectada color)
+{
+    static const char* names[COR_TOTAL] = {
+        "desconhecida", "preta", "branca", "vermelha", "verde",
+        "azul", "amarela", "laranja", "roxa"};
+    const uint8_t index = static_cast<uint8_t>(color);
+    return index < COR_TOTAL ? names[index] : "invalida";
+}
+
+void printMotorCalibration(Print& out, const char* name, const CalibracaoMotor& motor,
+                           uint8_t explicitFields)
+{
+    out.print(F("  Motor "));
+    out.println(name);
+    out.print(F("    Frente : compensacao="));
+    out.print(motor.compensacaoFrente, 3);
+    out.print(F(" | minimo="));
+    out.print(motor.minimoFrente);
+    out.println(F("%"));
+    out.print(F("    Re     : compensacao="));
+    out.print(motor.compensacaoTras, 3);
+    out.print(F(" | minimo="));
+    out.print(motor.minimoTras);
+    out.println(F("%"));
+    out.print(F("    Invertido: "));
+    out.println(motor.invertido ? F("sim") : F("nao"));
+    out.print(F("    Sobrescrito no sketch: "));
+    if (explicitFields == 0)
+    {
+        out.println(F("nenhum"));
+        return;
+    }
+
+    bool separator = false;
+    const auto printOverride = [&out, &separator, explicitFields](uint8_t bit,
+                                                                    const __FlashStringHelper* label)
+    {
+        if (explicitFields & bit)
+        {
+            if (separator)
+            {
+                out.print(F(", "));
+            }
+            out.print(label);
+            separator = true;
+        }
+    };
+    printOverride(AJUSTE_MOTOR_INVERSAO, F("inversao"));
+    printOverride(AJUSTE_MOTOR_COMPENSACAO_FRENTE, F("compensacao frente"));
+    printOverride(AJUSTE_MOTOR_COMPENSACAO_TRAS, F("compensacao re"));
+    printOverride(AJUSTE_MOTOR_MINIMO_FRENTE, F("minimo frente"));
+    printOverride(AJUSTE_MOTOR_MINIMO_TRAS, F("minimo re"));
+    out.println();
+}
+
+template <typename BusConfig>
+void printI2CBus(Print& out, const char* name, const BusConfig& bus, bool ready)
+{
+    out.print(F("  "));
+    out.print(name);
+    out.print(F(" | "));
+    out.print(ready ? F("OK") : F("FALHA"));
+    out.print(F(" | SDA="));
+    out.print(bus.sda);
+    out.print(F(" SCL="));
+    out.print(bus.scl);
+    out.print(F(" | "));
+    out.print(bus.frequency / 1000);
+    out.println(F(" kHz"));
+}
+} // namespace
+
 RoboS3::RoboS3()
     : config_(RoboConfig::padrao()), status_{}, motors_{}, line_{}, pid_{},
       ultrasonic_{}, vl53_{}, colors_{}, imu_{}, storage_{}, buttons_{}, debug_{},
       interfacesCalibracao_{nullptr, nullptr}, atualizadoresCalibracao_{nullptr, nullptr},
       ajustesMotorExplicitos_{0, 0}, begun_(false), anguloZInvertido_(false),
-      sensoresCorTrocados_(false)
+      sensoresCorTrocados_(false), calibracaoAlterada_(false)
 {
 }
 
@@ -138,6 +269,10 @@ void RoboS3::setTipoLinha(TipoLinha type)
 {
     config_.tipoLinha = type;
     line_.setTypeLine(type);
+}
+void RoboS3::espelharSensoresLinha(bool espelhados)
+{
+    line_.setMirrored(espelhados);
 }
 void RoboS3::definePinsPonteH(uint8_t ena, uint8_t in1, uint8_t in2, uint8_t in3, uint8_t in4,
                               uint8_t enb)
@@ -467,6 +602,7 @@ void RoboS3::inverterMotorEsquerdo(bool value)
     config_.motorEsquerdo = c;
     motors_.setCalibration(MOTOR_ESQUERDO, c);
     ajustesMotorExplicitos_[MOTOR_ESQUERDO] |= AJUSTE_MOTOR_INVERSAO;
+    calibracaoAlterada_ = true;
 }
 void RoboS3::inverterMotorDireito(bool value)
 {
@@ -475,6 +611,7 @@ void RoboS3::inverterMotorDireito(bool value)
     config_.motorDireito = c;
     motors_.setCalibration(MOTOR_DIREITO, c);
     ajustesMotorExplicitos_[MOTOR_DIREITO] |= AJUSTE_MOTOR_INVERSAO;
+    calibracaoAlterada_ = true;
 }
 void RoboS3::inverterMotores(bool left, bool right)
 {
@@ -509,6 +646,7 @@ void RoboS3::configurarCompensacaoMotor(Motor motor, SentidoMotor direction, flo
         config_.motorDireito = c;
     }
     motors_.setCalibration(motorNormalizado, c);
+    calibracaoAlterada_ = true;
 }
 void RoboS3::configurarMinimoMovimento(Motor motor, SentidoMotor direction, uint8_t minimum)
 {
@@ -534,6 +672,7 @@ void RoboS3::configurarMinimoMovimento(Motor motor, SentidoMotor direction, uint
         config_.motorDireito = c;
     }
     motors_.setCalibration(motorNormalizado, c);
+    calibracaoAlterada_ = true;
 }
 
 LeituraLinha RoboS3::lerLinha()
@@ -592,20 +731,25 @@ void RoboS3::padraoLinhaTexto(PadraoLinha padrao, char saida[9])
 {
     linePattern(static_cast<uint8_t>(padrao), saida);
 }
-void RoboS3::calibrarLinha(uint32_t ms)
+bool RoboS3::calibrarLinha(uint32_t ms)
 {
     parar();
-    line_.calibrateMs(ms);
+    const bool calibrada = line_.calibrateMs(ms);
+    calibracaoAlterada_ = calibracaoAlterada_ || calibrada;
+    return calibrada;
 }
-void RoboS3::calibrarLinhaAmostras(uint16_t samples)
+bool RoboS3::calibrarLinhaAmostras(uint16_t samples)
 {
     parar();
-    line_.calibrateSamples(samples);
+    const bool calibrada = line_.calibrateSamples(samples);
+    calibracaoAlterada_ = calibracaoAlterada_ || calibrada;
+    return calibrada;
 }
 void RoboS3::configurarLimiarLinha(uint16_t threshold)
 {
     config_.limiarLinha = threshold;
     line_.setThreshold(threshold);
+    calibracaoAlterada_ = true;
 }
 int16_t RoboS3::erroLinha(int16_t center) const
 {
@@ -677,6 +821,7 @@ LeituraDistancia RoboS3::lerDistancia(SensorDistancia sensor)
             return leitura;
         }
         leitura.centimetros = ultrasonic_[index].distanceCm();
+        leitura.timestampMs = ultrasonic_[index].lastMeasurementMs();
         leitura.valida = isfinite(leitura.centimetros);
         if (leitura.valida)
         {
@@ -803,11 +948,13 @@ void RoboS3::definirFaixaH(SensorCor s, CorDetectada c, float hMin, float hMax)
     r.hMax = hMax;
     r.ativa = true;
     color(s).setRange(c, r);
+    calibracaoAlterada_ = true;
 }
 void RoboS3::definirFaixaHSV(SensorCor s, CorDetectada c, float hMin, float hMax, float sMin,
                              float sMax, float vMin, float vMax)
 {
     color(s).setRange(c, {hMin, hMax, sMin, sMax, vMin, vMax, true});
+    calibracaoAlterada_ = true;
 }
 void RoboS3::calibrarCor(SensorCor s, CorDetectada c, uint16_t samples)
 {
@@ -852,10 +999,12 @@ void RoboS3::calibrarCor(SensorCor s, CorDetectada c, uint16_t samples)
 void RoboS3::setGanhoCor(SensorCor s, GanhoCor gain)
 {
     color(s).setGain(gain);
+    calibracaoAlterada_ = true;
 }
 void RoboS3::setTempoIntegracaoCor(SensorCor s, TempoIntegracaoCor time)
 {
     color(s).setIntegrationTime(time);
+    calibracaoAlterada_ = true;
 }
 bool RoboS3::trocarSensoresCor(bool trocados)
 {
@@ -899,6 +1048,7 @@ void RoboS3::calibrarIMU(uint32_t ms)
 {
     parar();
     imu_.calibrate(ms);
+    calibracaoAlterada_ = calibracaoAlterada_ || status_.imu;
 }
 
 RoboCalibration RoboS3::makeCalibration() const
@@ -949,6 +1099,7 @@ bool RoboS3::salvarCalibracao()
     if (salvou)
     {
         status_.calibracaoCarregada = true;
+        calibracaoAlterada_ = false;
         ajustesMotorExplicitos_[MOTOR_ESQUERDO] = 0;
         ajustesMotorExplicitos_[MOTOR_DIREITO] = 0;
     }
@@ -980,6 +1131,8 @@ bool RoboS3::carregarCalibracao()
     }
     applyCalibration(d);
     status_.calibracaoCarregada = true;
+    calibracaoAlterada_ = ajustesMotorExplicitos_[MOTOR_ESQUERDO] != 0 ||
+                          ajustesMotorExplicitos_[MOTOR_DIREITO] != 0;
     return true;
 }
 bool RoboS3::apagarCalibracao()
@@ -999,6 +1152,7 @@ bool RoboS3::apagarCalibracao()
     imu_.setOffsets({});
     imu_.zeroYaw();
     status_.calibracaoCarregada = false;
+    calibracaoAlterada_ = !apagouNvs;
     return apagouNvs;
 }
 bool RoboS3::corDisponivel(SensorCor s) const
@@ -1008,39 +1162,51 @@ bool RoboS3::corDisponivel(SensorCor s) const
 
 void RoboS3::printStatus(Print& out) const
 {
-    out.println(F("[RoboS3] Status"));
-    const char* names[] = {"Motores", "QTR", "ULTRA1", "ULTRA2", "I2C0", "I2C1",
-                           "TCS esquerdo", "TCS direito", "MPU6050", "VL53 #1", "VL53 #2"};
-    const bool enabled[] = {true, true, status_.ultrassom1Habilitado,
-                            status_.ultrassom2Habilitado, true, true,
-                            status_.corEsquerdaHabilitada, status_.corDireitaHabilitada,
-                            true, status_.vl53_1Habilitado, status_.vl53_2Habilitado};
-    const bool values[] = {status_.motores, status_.linha, status_.ultrassom,
-                           status_.ultrassom2, status_.i2c0, status_.i2c1,
-                           status_.corEsquerda, status_.corDireita, status_.imu,
-                           status_.vl53_1, status_.vl53_2};
-    for (uint8_t i = 0; i < 11; ++i)
-    {
-        out.print(!enabled[i] ? F("[DESATIVADO] ") : values[i] ? F("[OK] ") : F("[ERRO] "));
-        out.println(names[i]);
-    }
-    out.print(F("IDs distancia: ULTRA1="));
-    out.print(config_.board.ultrassom[0].id);
-    out.print(F(", ULTRA2="));
-    out.print(config_.board.ultrassom[1].id);
+    printReportStart(out, F("STATUS DO ROBO"));
+    out.print(F("Resultado da inicializacao: "));
+    out.println(status_.inicializacaoCompleta() ? F("COMPLETA") : F("COM FALHAS"));
+    out.print(F("Calibracao aplicada: "));
+    out.println(status_.calibracaoCarregada ? F("NVS") : F("PADRAO"));
+
+    printSection(out, F("MODULOS"));
+    out.println(F("  MODULO                    | ESTADO"));
+    printModuleStatus(out, "Motores", true, status_.motores);
+    printModuleStatus(out, "Sensores QTR", true, status_.linha);
+    printModuleStatus(out, "Ultrassom 1", status_.ultrassom1Habilitado, status_.ultrassom);
+    printModuleStatus(out, "Ultrassom 2", status_.ultrassom2Habilitado, status_.ultrassom2);
+    printModuleStatus(out, "Sensor de cor esquerdo", status_.corEsquerdaHabilitada,
+                      status_.corEsquerda);
+    printModuleStatus(out, "Sensor de cor direito", status_.corDireitaHabilitada,
+                      status_.corDireita);
+    printModuleStatus(out, "MPU6050", true, status_.imu);
+    printModuleStatus(out, "VL53L0X 1", status_.vl53_1Habilitado, status_.vl53_1);
+    printModuleStatus(out, "VL53L0X 2", status_.vl53_2Habilitado, status_.vl53_2);
+
+    printSection(out, F("BARRAMENTOS I2C"));
+    printI2CBus(out, "I2C0", config_.board.i2c0, status_.i2c0);
+    printI2CBus(out, "I2C1", config_.board.i2c1, status_.i2c1);
+    out.print(F("  MPU6050 | barramento=I2C"));
+    out.print(config_.board.imuI2C == BARRAMENTO_I2C1 ? 1 : 0);
+    out.print(F(" | endereco=0x"));
+    out.println(config_.board.mpuAddress, HEX);
+
+    printSection(out, F("IDS DOS SENSORES DE DISTANCIA"));
+    out.print(F("  Ultrassom 1: "));
+    out.println(config_.board.ultrassom[0].id);
+    out.print(F("  Ultrassom 2: "));
+    out.println(config_.board.ultrassom[1].id);
     if (status_.vl53_1Habilitado)
     {
-        out.print(F(", VL53#1="));
-        out.print(config_.board.vl53[0].id);
+        out.print(F("  VL53L0X 1  : "));
+        out.println(config_.board.vl53[0].id);
     }
     if (status_.vl53_2Habilitado)
     {
-        out.print(F(", VL53#2="));
-        out.print(config_.board.vl53[1].id);
+        out.print(F("  VL53L0X 2  : "));
+        out.println(config_.board.vl53[1].id);
     }
-    out.println();
-    out.print(status_.calibracaoCarregada ? F("[OK] ") : F("[PADRAO] "));
-    out.println(F("Calibracao"));
+
+    printReportEnd(out);
 }
 bool RoboS3::distanciaDisponivel(SensorDistancia sensor) const
 {
@@ -1076,36 +1242,41 @@ bool RoboS3::distanciaDisponivel(uint8_t id) const
 
 void RoboS3::printErrosInicializacao(Print& out) const
 {
+    printReportStart(out, F("DIAGNOSTICO DE INICIALIZACAO"));
     if (status_.inicializacaoCompleta())
     {
-        out.println(F("[RoboS3] Nenhum erro de inicializacao."));
+        out.println(F("[OK] Todos os modulos previstos foram inicializados."));
+        printReportEnd(out);
         return;
     }
 
-    out.println(F("[RoboS3] Erros de inicializacao:"));
+    out.println(F("Falhas detectadas durante begin():"));
+    printSection(out, F("FALHAS"));
     if (!status_.motores)
     {
-        out.println(F("- Motores: falha ao configurar a ponte H/PWM."));
+        out.println(F("  [ERRO] Motores | falha ao configurar ponte H ou PWM."));
     }
     if (!status_.linha)
     {
-        out.println(F("- QTR: falha ao configurar os sensores de linha."));
+        out.println(F("  [ERRO] QTR | falha ao configurar os sensores de linha."));
     }
     if (status_.ultrassom1Habilitado && !status_.ultrassom)
     {
-        out.println(F("- ULTRA1: falha ao configurar TRIGGER/ECHO."));
+        out.println(F("  [ERRO] Ultrassom 1 | falha ao configurar TRIGGER/ECHO."));
     }
     if (status_.ultrassom2Habilitado && !status_.ultrassom2)
     {
-        out.println(F("- ULTRA2: falha ao configurar TRIGGER/ECHO."));
+        out.println(F("  [ERRO] Ultrassom 2 | falha ao configurar TRIGGER/ECHO."));
     }
     if (!status_.i2c0)
     {
-        out.println(F("- I2C0: falha ao iniciar SDA/SCL do barramento 0."));
+        out.println(F("  [ERRO] I2C0 | falha ao iniciar o controlador."));
+        printI2CBus(out, "I2C0", config_.board.i2c0, false);
     }
     if (!status_.i2c1)
     {
-        out.println(F("- I2C1: falha ao iniciar SDA/SCL do barramento 1."));
+        out.println(F("  [ERRO] I2C1 | falha ao iniciar o controlador."));
+        printI2CBus(out, "I2C1", config_.board.i2c1, false);
     }
     auto quantidadeEndereco29 = [this](BarramentoI2C barramento)
     {
@@ -1122,117 +1293,192 @@ void RoboS3::printErrosInicializacao(Print& out) const
     const bool conflitoI2C1 = quantidadeEndereco29(BARRAMENTO_I2C1) > 1;
     if (conflitoI2C0)
     {
-        out.println(F("- I2C0: mais de um TCS34725/VL53L0X usa o endereco 0x29."));
+        out.println(F("  [ERRO] I2C0 | mais de um TCS34725/VL53L0X no endereco 0x29."));
     }
     if (conflitoI2C1)
     {
-        out.println(F("- I2C1: mais de um TCS34725/VL53L0X usa o endereco 0x29."));
+        out.println(F("  [ERRO] I2C1 | mais de um TCS34725/VL53L0X no endereco 0x29."));
     }
     if (status_.corEsquerdaHabilitada && !status_.corEsquerda &&
         !(barramentoCor(COR_ESQUERDA) == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
     {
-        out.print(F("- Cor esquerda: TCS34725 nao respondeu no "));
+        out.print(F("  [ERRO] Cor esquerda | TCS34725 nao respondeu no "));
         out.println(barramentoCor(COR_ESQUERDA) == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
     }
     if (status_.corDireitaHabilitada && !status_.corDireita &&
         !(barramentoCor(COR_DIREITA) == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
     {
-        out.print(F("- Cor direita: TCS34725 nao respondeu no "));
+        out.print(F("  [ERRO] Cor direita | TCS34725 nao respondeu no "));
         out.println(barramentoCor(COR_DIREITA) == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
     }
     if (status_.vl53_1Habilitado && !status_.vl53_1 &&
         !(config_.board.vl53[0].barramento == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
     {
-        out.print(F("- VL53 #1: sensor nao respondeu no "));
+        out.print(F("  [ERRO] VL53L0X 1 | sensor nao respondeu no "));
         out.println(config_.board.vl53[0].barramento == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
     }
     if (status_.vl53_2Habilitado && !status_.vl53_2 &&
         !(config_.board.vl53[1].barramento == BARRAMENTO_I2C0 ? conflitoI2C0 : conflitoI2C1))
     {
-        out.print(F("- VL53 #2: sensor nao respondeu no "));
+        out.print(F("  [ERRO] VL53L0X 2 | sensor nao respondeu no "));
         out.println(config_.board.vl53[1].barramento == BARRAMENTO_I2C1 ? F("I2C1.") : F("I2C0."));
     }
     if (!status_.imu)
     {
-        out.print(F("- IMU: MPU6050 nao respondeu no "));
-        out.println(config_.board.imuI2C == BARRAMENTO_I2C1 ? F("I2C1/endereco configurado.")
-                                                             : F("I2C0/endereco configurado."));
+        out.print(F("  [ERRO] MPU6050 | sem resposta em I2C"));
+        out.print(config_.board.imuI2C == BARRAMENTO_I2C1 ? 1 : 0);
+        out.print(F(" no endereco 0x"));
+        out.println(config_.board.mpuAddress, HEX);
+        out.println(F("         Confira SDA/SCL, alimentacao, pull-ups e AD0 (0x68/0x69)."));
     }
+    printReportEnd(out);
 }
 void RoboS3::printLinha(Print& out) const
 {
     const auto& r = line_.last();
-    out.print(F("BRUTO: "));
-    for (auto v : r.bruto)
-    {
-        out.print(v);
-        out.print(' ');
-    }
-    out.print(F("\nCALIBRADO: "));
-    for (auto v : r.calibrado)
-    {
-        out.print(v);
-        out.print(' ');
-    }
-    out.print(F("\nPADRAO: "));
+    printReportStart(out, F("LEITURA DOS SENSORES DE LINHA"));
+    out.print(F("  Instante da leitura: "));
+    out.print(r.timestampMs);
+    out.println(F(" ms"));
+    out.print(F("  Linha detectada    : "));
+    out.println(r.detectada ? F("sim") : F("nao"));
+    out.print(F("  Posicao valida     : "));
+    out.println(r.posicaoValida ? F("sim") : F("nao"));
+    out.print(F("  Padrao S1..S8      : "));
     out.println(r.padrao);
-    out.print(F("MASCARA: 0b"));
+    out.print(F("  Mascara            : 0b"));
     for (int i = 7; i >= 0; --i)
     {
         out.print((r.mascara >> i) & 1);
     }
-    out.print(F("\nPOSICAO: "));
-    out.println(r.posicao);
-    out.print(F("TEMPO SEM LINHA: "));
-    out.println(r.tempoSemLinhaMs);
+    out.println();
+    out.print(F("  Sensores pretos    : "));
+    out.print(r.quantidadePretos);
+    out.println(F(" de 8"));
+    out.print(F("  Posicao            : "));
+    out.print(r.posicao);
+    out.println(F(" / 7000"));
+    out.print(F("  Ultima posicao     : "));
+    out.println(r.ultimaPosicaoValida);
+    out.print(F("  Tempo sem linha    : "));
+    out.print(r.tempoSemLinhaMs);
+    out.println(F(" ms"));
+
+    printSection(out, F("AMOSTRAS POR SENSOR (S1..S8)"));
+    printVector8(out, "Bruto", r.bruto);
+    printVector8(out, "Calibrado (0..1000)", r.calibrado);
+    printReportEnd(out);
 }
 void RoboS3::printCores(Print& out)
 {
+    printReportStart(out, F("LEITURAS DOS SENSORES DE COR"));
     for (uint8_t s = 0; s < 2; ++s)
     {
         auto r = lerDadosCor(static_cast<SensorCor>(s));
-        out.print(s ? F("D: ") : F("E: "));
+        printSection(out, s == 0 ? F("SENSOR ESQUERDO") : F("SENSOR DIREITO"));
+        out.print(F("  Estado      : "));
+        out.println(r.valida ? F("valida") : F("indisponivel"));
+        out.print(F("  Timestamp   : "));
+        out.print(r.timestampMs);
+        out.println(F(" ms"));
+        out.print(F("  RGB (0..255): R="));
         out.print(r.rgb.r);
-        out.print(' ');
+        out.print(F(" G="));
         out.print(r.rgb.g);
-        out.print(' ');
-        out.print(r.rgb.b);
-        out.print(F(" HSV "));
-        out.print(r.hsv.h);
-        out.print(' ');
-        out.print(r.hsv.s);
-        out.print(' ');
-        out.println(r.hsv.v);
+        out.print(F(" B="));
+        out.println(r.rgb.b);
+        out.print(F("  HSV         : H="));
+        out.print(r.hsv.h, 1);
+        out.print(F(" deg S="));
+        out.print(r.hsv.s, 1);
+        out.print(F("% V="));
+        out.print(r.hsv.v, 1);
+        out.println('%');
+        out.print(F("  HSL         : H="));
+        out.print(r.hsl.h, 1);
+        out.print(F(" deg S="));
+        out.print(r.hsl.s, 1);
+        out.print(F("% L="));
+        out.print(r.hsl.l, 1);
+        out.println('%');
+        out.print(F("  Bruto       : R="));
+        out.print(r.rRaw);
+        out.print(F(" G="));
+        out.print(r.gRaw);
+        out.print(F(" B="));
+        out.print(r.bRaw);
+        out.print(F(" Clear="));
+        out.println(r.clear);
+        out.print(F("  Classificada: "));
+        out.println(colorName(r.cor));
     }
+    printReportEnd(out);
 }
 void RoboS3::printIMU(Print& out) const
 {
     const auto& r = imu_.last();
-    out.print(F("ACC "));
-    out.print(r.accX);
-    out.print(' ');
-    out.print(r.accY);
-    out.print(' ');
-    out.println(r.accZ);
-    out.print(F("GYRO "));
-    out.print(r.gyroX);
-    out.print(' ');
-    out.print(r.gyroY);
-    out.print(' ');
-    out.println(r.gyroZ);
-    out.print(F("ANG "));
-    out.print(r.roll);
-    out.print(' ');
-    out.print(r.pitch);
-    out.print(' ');
-    out.println(r.yawRelativo);
+    printReportStart(out, F("LEITURA DA IMU (MPU6050)"));
+    out.print(F("  Estado   : "));
+    out.println(r.valida ? F("valida") : F("indisponivel"));
+    out.print(F("  Timestamp: "));
+    out.print(r.timestampMs);
+    out.println(F(" ms"));
+    out.print(F("  Barramento/endereco: I2C"));
+    out.print(config_.board.imuI2C == BARRAMENTO_I2C1 ? 1 : 0);
+    out.print(F(" / 0x"));
+    out.println(config_.board.mpuAddress, HEX);
+
+    printSection(out, F("ACELERACAO"));
+    out.print(F("  X="));
+    out.print(r.accX, 3);
+    out.print(F("  Y="));
+    out.print(r.accY, 3);
+    out.print(F("  Z="));
+    out.print(r.accZ, 3);
+    out.println(F(" m/s^2"));
+
+    printSection(out, F("VELOCIDADE ANGULAR"));
+    out.print(F("  X="));
+    out.print(r.gyroX, 3);
+    out.print(F("  Y="));
+    out.print(r.gyroY, 3);
+    out.print(F("  Z="));
+    out.print(r.gyroZ, 3);
+    out.println(F(" deg/s"));
+
+    printSection(out, F("ORIENTACAO E TEMPERATURA"));
+    out.print(F("  Roll="));
+    out.print(r.roll, 2);
+    out.print(F(" deg | Pitch="));
+    out.print(r.pitch, 2);
+    out.print(F(" deg | Yaw relativo="));
+    out.print(r.yawRelativo, 2);
+    out.println(F(" deg"));
+    out.print(F("  Temperatura: "));
+    out.print(r.temperatura, 2);
+    out.println(F(" C"));
+    printReportEnd(out);
 }
 void RoboS3::printMotores(Print& out) const
 {
-    out.print(F("E="));
+    printReportStart(out, F("ESTADO E CALIBRACAO DOS MOTORES"));
+    out.print(F("  Estado do driver: "));
+    out.println(status_.motores ? F("pronto") : F("falha"));
+    out.print(F("  Comando esquerdo: "));
     out.print(motors_.leftCommand());
-    out.print(F(" D="));
-    out.println(motors_.rightCommand());
+    out.println('%');
+    out.print(F("  Comando direito : "));
+    out.print(motors_.rightCommand());
+    out.println('%');
+
+    printSection(out, F("CALIBRACAO APLICADA"));
+    printMotorCalibration(out, "esquerdo", motors_.calibration(MOTOR_ESQUERDO),
+                          ajustesMotorExplicitos_[MOTOR_ESQUERDO]);
+    printMotorCalibration(out, "direito", motors_.calibration(MOTOR_DIREITO),
+                          ajustesMotorExplicitos_[MOTOR_DIREITO]);
+    out.print(F("  Mapeamento dos motores trocado: "));
+    out.println(motors_.swapped() ? F("sim") : F("nao"));
+    printReportEnd(out);
 }
 
 void RoboS3::printCalibracao(Print& out) const
@@ -1240,112 +1486,62 @@ void RoboS3::printCalibracao(Print& out) const
     const bool possuiAjustesExplicitos =
         ajustesMotorExplicitos_[MOTOR_ESQUERDO] != 0 ||
         ajustesMotorExplicitos_[MOTOR_DIREITO] != 0;
-    out.print(F("[RoboS3] Calibracao aplicada: "));
-    out.print(status_.calibracaoCarregada ? F("SALVA NA NVS") : F("VALORES PADRAO"));
-    if (possuiAjustesExplicitos)
-    {
-        out.print(F(" + AJUSTES DO CODIGO"));
-    }
-    out.println();
+    printReportStart(out, F("RELATORIO DE CALIBRACAO APLICADA"));
+    out.print(F("  Origem base dos dados: "));
+    out.println(status_.calibracaoCarregada ? F("NVS (calibracao salva)") : F("valores padrao"));
+    out.print(F("  Alterada desde salvar/carregar: "));
+    out.println(calibracaoAlterada_ ? F("sim; valores atuais ainda nao salvos") : F("nao"));
+    out.print(F("  Ajustes de motor no sketch: "));
+    out.println(possuiAjustesExplicitos ? F("sim; detalhados por motor") : F("nenhum"));
 
     uint16_t minimos[8]{};
     uint16_t maximos[8]{};
     const bool qtrCalibrado = line_.getCalibration(minimos, maximos);
-    out.print(F("  QTR calibrado="));
-    out.print(qtrCalibrado ? F("sim") : F("nao"));
-    out.print(F(" limiar="));
-    out.print(line_.threshold());
+    printSection(out, F("LINHA (QTR)"));
+    out.print(F("  Calibracao dos extremos: "));
+    out.println(qtrCalibrado ? F("disponivel") : F("ainda nao realizada"));
+    out.print(F("  Limiar de deteccao (0..1000): "));
+    out.println(line_.threshold());
     if (qtrCalibrado)
     {
-        out.print(F(" min="));
-        for (uint8_t i = 0; i < 8; ++i)
-        {
-            if (i)
-            {
-                out.print(',');
-            }
-            out.print(minimos[i]);
-        }
-        out.print(F(" max="));
-        for (uint8_t i = 0; i < 8; ++i)
-        {
-            if (i)
-            {
-                out.print(',');
-            }
-            out.print(maximos[i]);
-        }
+        printVector8(out, "Minimos S1..S8", minimos);
+        printVector8(out, "Maximos S1..S8", maximos);
     }
-    out.println();
 
+    printSection(out, F("MOTORES"));
     for (uint8_t i = 0; i < 2; ++i)
     {
         const CalibracaoMotor& motor =
             motors_.calibration(i == 0 ? MOTOR_ESQUERDO : MOTOR_DIREITO);
-        out.print(i == 0 ? F("  Motor E") : F("  Motor D"));
-        out.print(F(": compFrente="));
-        out.print(motor.compensacaoFrente, 3);
-        out.print(F(" compTras="));
-        out.print(motor.compensacaoTras, 3);
-        out.print(F(" minimoFrente="));
-        out.print(motor.minimoFrente);
-        out.print(F(" minimoTras="));
-        out.print(motor.minimoTras);
-        out.print(F(" invertido="));
-        out.print(motor.invertido ? F("sim") : F("nao"));
-        const uint8_t ajustes = ajustesMotorExplicitos_[i];
-        out.print(F(" ajustesCodigo="));
-        if (ajustes == 0)
-        {
-            out.println(F("nenhum"));
-            continue;
-        }
-        bool separador = false;
-        if (ajustes & AJUSTE_MOTOR_INVERSAO)
-        {
-            out.print(F("inversao"));
-            separador = true;
-        }
-        if (ajustes & AJUSTE_MOTOR_COMPENSACAO_FRENTE)
-        {
-            out.print(separador ? F(",compFrente") : F("compFrente"));
-            separador = true;
-        }
-        if (ajustes & AJUSTE_MOTOR_COMPENSACAO_TRAS)
-        {
-            out.print(separador ? F(",compTras") : F("compTras"));
-            separador = true;
-        }
-        if (ajustes & AJUSTE_MOTOR_MINIMO_FRENTE)
-        {
-            out.print(separador ? F(",minimoFrente") : F("minimoFrente"));
-            separador = true;
-        }
-        if (ajustes & AJUSTE_MOTOR_MINIMO_TRAS)
-        {
-            out.print(separador ? F(",minimoTras") : F("minimoTras"));
-        }
-        out.println();
+        printMotorCalibration(out, i == 0 ? "esquerdo" : "direito", motor,
+                              ajustesMotorExplicitos_[i]);
     }
-    out.print(F("  Mapeamento: motoresTrocados="));
+    out.print(F("  Mapeamento trocado dos motores: "));
     out.print(motors_.swapped() ? F("sim") : F("nao"));
-    out.print(F(" coresTrocadas="));
+    out.println();
+    out.print(F("  Mapeamento trocado dos sensores de cor: "));
     out.println(sensoresCorTrocados_ ? F("sim") : F("nao"));
 
-    static const char* nomesCores[COR_TOTAL] =
-        {"desconhecida", "preta", "branca", "vermelha", "verde", "azul", "amarela", "laranja", "roxa"};
+    printSection(out, F("SENSORES DE COR (TCS34725)"));
     static const uint8_t ganhos[] = {1, 4, 16, 60};
-    static const char* integracoes[] = {"2.4ms", "24ms", "50ms", "101ms", "154ms", "600ms"};
+    static const char* integracoes[] = {"2.4 ms", "24 ms", "50 ms", "101 ms", "154 ms", "600 ms"};
     for (uint8_t sensor = 0; sensor < 2; ++sensor)
     {
         const uint8_t ganho = static_cast<uint8_t>(colors_[sensor].gain());
         const uint8_t integracao = static_cast<uint8_t>(colors_[sensor].integrationTime());
-        out.print(sensor == 0 ? F("  Cor E") : F("  Cor D"));
-        out.print(F(": ganho="));
+        out.print(F("  Sensor "));
+        out.println(sensor == 0 ? F("esquerdo") : F("direito"));
+        out.print(F("    Estado     : "));
+        const bool colorEnabled = sensor == 0 ? status_.corEsquerdaHabilitada
+                                              : status_.corDireitaHabilitada;
+        const bool colorReady = sensor == 0 ? status_.corEsquerda : status_.corDireita;
+        out.println(!colorEnabled ? F("desativado") : colorReady ? F("pronto") : F("falha"));
+        out.print(F("    Ganho      : "));
         out.print(ganho < 4 ? ganhos[ganho] : 0);
-        out.print('x');
-        out.print(F(" integracao="));
+        out.println('x');
+        out.print(F("    Integracao : "));
         out.println(integracao < 6 ? integracoes[integracao] : "invalida");
+        bool possuiFaixaAtiva = false;
         for (uint8_t cor = 0; cor < COR_TOTAL; ++cor)
         {
             const FaixaHSV& faixa = colors_[sensor].range(static_cast<CorDetectada>(cor));
@@ -1353,34 +1549,53 @@ void RoboS3::printCalibracao(Print& out) const
             {
                 continue;
             }
+            possuiFaixaAtiva = true;
+            const char* nome = colorName(static_cast<CorDetectada>(cor));
             out.print(F("    "));
-            out.print(nomesCores[cor]);
-            out.print(F(": H="));
+            out.print(nome);
+            for (size_t i = strlen(nome); i < 12; ++i)
+            {
+                out.print(' ');
+            }
+            out.print(F(" | H="));
             out.print(faixa.hMin, 1);
             out.print(F(".."));
             out.print(faixa.hMax, 1);
-            out.print(F(" S="));
+            out.print(F(" deg | S="));
             out.print(faixa.sMin, 1);
             out.print(F(".."));
             out.print(faixa.sMax, 1);
-            out.print(F(" V="));
+            out.print(F("% | V="));
             out.print(faixa.vMin, 1);
             out.print(F(".."));
-            out.println(faixa.vMax, 1);
+            out.print(faixa.vMax, 1);
+            out.println('%');
+        }
+        if (!possuiFaixaAtiva)
+        {
+            out.println(F("    Faixas HSV ativas: nenhuma"));
         }
     }
 
+    printSection(out, F("IMU (MPU6050)"));
+    out.print(F("  Estado do sensor: "));
+    out.println(status_.imu ? F("pronto") : F("falha/indisponivel"));
+    out.print(F("  Barramento     : I2C"));
+    out.println(config_.board.imuI2C == BARRAMENTO_I2C1 ? 1 : 0);
+    out.print(F("  Endereco       : 0x"));
+    out.println(config_.board.mpuAddress, HEX);
     const robos3::IMUOffsets& offsets = imu_.offsets();
-    out.print(F("  IMU offsets: acc="));
+    out.print(F("  Offsets do acelerometro (LSB): X="));
     out.print(offsets.ax);
-    out.print(',');
+    out.print(F(" Y="));
     out.print(offsets.ay);
-    out.print(',');
-    out.print(offsets.az);
-    out.print(F(" gyro="));
+    out.print(F(" Z="));
+    out.println(offsets.az);
+    out.print(F("  Offsets do giroscopio (LSB) : X="));
     out.print(offsets.gx);
-    out.print(',');
+    out.print(F(" Y="));
     out.print(offsets.gy);
-    out.print(',');
+    out.print(F(" Z="));
     out.println(offsets.gz);
+    printReportEnd(out);
 }

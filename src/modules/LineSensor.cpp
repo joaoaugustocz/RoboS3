@@ -10,10 +10,25 @@ namespace robos3
 
 static_assert(board::ADC_MAX_VALUE == 4095, "O backend QTR-8A da RoboS3 exige ADC de 12 bits.");
 
+namespace
+{
+bool validCalibrationRanges(const uint16_t minimum[8], const uint16_t maximum[8])
+{
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        if (minimum[i] >= maximum[i])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
 LineSensor::LineSensor()
     : type_(QTR_8A), pins_{}, analogMinimum_{}, analogMaximum_{},
       analogCalibrationInitialized_(false), lineType_(LINHA_PRETA), threshold_(500), last_{},
-      lastDetectionMs_(0), lastValidPosition_(3500), begun_(false), history_{},
+      lastDetectionMs_(0), lastValidPosition_(3500), begun_(false), mirrored_(false), history_{},
       historyCapacity_(8), historyCount_(0), historyNext_(0)
 {
     resetAnalogCalibration();
@@ -81,7 +96,7 @@ bool LineSensor::calibrationInitialized() const
     return type_ == QTR_8A ? analogCalibrationInitialized_ : qtr_.calibrationOn.initialized;
 }
 
-void LineSensor::calibrateAnalogStep()
+void LineSensor::calibrateAnalogStep(uint16_t minimum[8], uint16_t maximum[8]) const
 {
     uint16_t stepMinimum[8];
     uint16_t stepMaximum[8]{};
@@ -90,7 +105,7 @@ void LineSensor::calibrateAnalogStep()
         stepMinimum[i] = board::ADC_MAX_VALUE;
     }
 
-    for (uint8_t reading = 0; reading < ANALOG_CALIBRATION_READS; ++reading)
+    for (uint8_t reading = 0; reading < CALIBRATION_READS_PER_STEP; ++reading)
     {
         uint16_t raw[8];
         readAnalogRaw(raw);
@@ -111,16 +126,60 @@ void LineSensor::calibrateAnalogStep()
     {
         // Mesmo filtro da QTRSensors: os extremos internos do lote evitam que
         // uma unica amostra espuria amplie toda a faixa de calibracao.
-        if (stepMaximum[i] < analogMinimum_[i])
+        if (stepMaximum[i] < minimum[i])
         {
-            analogMinimum_[i] = stepMaximum[i];
+            minimum[i] = stepMaximum[i];
         }
-        if (stepMinimum[i] > analogMaximum_[i])
+        if (stepMinimum[i] > maximum[i])
         {
-            analogMaximum_[i] = stepMinimum[i];
+            maximum[i] = stepMinimum[i];
         }
     }
-    analogCalibrationInitialized_ = true;
+}
+
+void LineSensor::calibrateStep(uint16_t minimum[8], uint16_t maximum[8])
+{
+    if (type_ == QTR_8A)
+    {
+        calibrateAnalogStep(minimum, maximum);
+        return;
+    }
+
+    uint16_t stepMinimum[8];
+    uint16_t stepMaximum[8]{};
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        stepMinimum[i] = 0xFFFFU;
+    }
+
+    for (uint8_t reading = 0; reading < CALIBRATION_READS_PER_STEP; ++reading)
+    {
+        uint16_t raw[8];
+        qtr_.read(raw);
+        for (uint8_t i = 0; i < 8; ++i)
+        {
+            if (raw[i] < stepMinimum[i])
+            {
+                stepMinimum[i] = raw[i];
+            }
+            if (raw[i] > stepMaximum[i])
+            {
+                stepMaximum[i] = raw[i];
+            }
+        }
+    }
+
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        if (stepMinimum[i] > maximum[i])
+        {
+            maximum[i] = stepMinimum[i];
+        }
+        if (stepMaximum[i] < minimum[i])
+        {
+            minimum[i] = stepMaximum[i];
+        }
+    }
 }
 
 void LineSensor::prepararADC() const
@@ -133,7 +192,7 @@ void LineSensor::prepararADC() const
 #endif
 }
 
-void LineSensor::readRaw(uint16_t output[8])
+void LineSensor::readRawPhysical(uint16_t output[8])
 {
     if (!begun_)
     {
@@ -147,6 +206,25 @@ void LineSensor::readRaw(uint16_t output[8])
     else
     {
         qtr_.read(output);
+    }
+}
+
+void LineSensor::reverseSensorOrder(uint16_t values[8])
+{
+    for (uint8_t i = 0; i < 4; ++i)
+    {
+        const uint16_t temporary = values[i];
+        values[i] = values[7 - i];
+        values[7 - i] = temporary;
+    }
+}
+
+void LineSensor::readRaw(uint16_t output[8])
+{
+    readRawPhysical(output);
+    if (mirrored_)
+    {
+        reverseSensorOrder(output);
     }
 }
 
@@ -176,8 +254,12 @@ void LineSensor::calibrateRaw(const uint16_t raw[8], uint16_t output[8]) const
 void LineSensor::readCalibrated(uint16_t output[8])
 {
     uint16_t raw[8];
-    readRaw(raw);
+    readRawPhysical(raw);
     calibrateRaw(raw, output);
+    if (mirrored_)
+    {
+        reverseSensorOrder(output);
+    }
 }
 
 uint16_t LineSensor::positionFrom(const uint16_t calibrated[8], bool& valid)
@@ -208,8 +290,13 @@ uint16_t LineSensor::positionFrom(const uint16_t calibrated[8], bool& valid)
 LeituraLinha LineSensor::read()
 {
     LeituraLinha reading{};
-    readRaw(reading.bruto); // unica aquisicao fisica
+    readRawPhysical(reading.bruto); // unica aquisicao fisica
     calibrateRaw(reading.bruto, reading.calibrado);
+    if (mirrored_)
+    {
+        reverseSensorOrder(reading.bruto);
+        reverseSensorOrder(reading.calibrado);
+    }
     reading.mascara = lineMask(reading.calibrado, threshold_, lineType_);
     reading.caso = static_cast<PadraoLinha>(reading.mascara);
     linePattern(reading.mascara, reading.padrao);
@@ -233,45 +320,63 @@ LeituraLinha LineSensor::read()
     return reading;
 }
 
-void LineSensor::calibrateMs(uint32_t durationMs)
+bool LineSensor::calibrateMs(uint32_t durationMs)
 {
-    if (!begun_)
+    if (!begun_ || durationMs == 0)
     {
-        return;
+        return false;
     }
+
+    uint16_t candidateMinimum[8];
+    uint16_t candidateMaximum[8]{};
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        candidateMinimum[i] = type_ == QTR_8A ? board::ADC_MAX_VALUE : 0xFFFFU;
+    }
+
     const uint32_t start = millis();
     do
     {
-        if (type_ == QTR_8A)
-        {
-            calibrateAnalogStep();
-        }
-        else
-        {
-            qtr_.calibrate();
-        }
+        calibrateStep(candidateMinimum, candidateMaximum);
         yield();
     } while (millis() - start < durationMs);
+
+    if (!validCalibrationRanges(candidateMinimum, candidateMaximum) ||
+        !setCalibration(candidateMinimum, candidateMaximum))
+    {
+        return false;
+    }
+    resetReadState();
+    return true;
 }
 
-void LineSensor::calibrateSamples(uint16_t samples)
+bool LineSensor::calibrateSamples(uint16_t samples)
 {
-    if (!begun_)
+    if (!begun_ || samples == 0)
     {
-        return;
+        return false;
     }
+
+    uint16_t candidateMinimum[8];
+    uint16_t candidateMaximum[8]{};
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        candidateMinimum[i] = type_ == QTR_8A ? board::ADC_MAX_VALUE : 0xFFFFU;
+    }
+
     for (uint16_t i = 0; i < samples; ++i)
     {
-        if (type_ == QTR_8A)
-        {
-            calibrateAnalogStep();
-        }
-        else
-        {
-            qtr_.calibrate();
-        }
+        calibrateStep(candidateMinimum, candidateMaximum);
         yield();
     }
+
+    if (!validCalibrationRanges(candidateMinimum, candidateMaximum) ||
+        !setCalibration(candidateMinimum, candidateMaximum))
+    {
+        return false;
+    }
+    resetReadState();
+    return true;
 }
 
 bool LineSensor::getCalibration(uint16_t minimum[8], uint16_t maximum[8]) const
@@ -318,7 +423,34 @@ bool LineSensor::setCalibration(const uint16_t minimum[8], const uint16_t maximu
     }
     memcpy(qtr_.calibrationOn.minimum, minimum, sizeof(uint16_t) * 8);
     memcpy(qtr_.calibrationOn.maximum, maximum, sizeof(uint16_t) * 8);
+    qtr_.calibrationOn.initialized = true;
     return true;
+}
+
+void LineSensor::setMirrored(bool mirrored)
+{
+    if (mirrored_ == mirrored)
+    {
+        return;
+    }
+    mirrored_ = mirrored;
+    resetReadState();
+}
+
+void LineSensor::resetCalibrationExtremes()
+{
+    qtr_.resetCalibration();
+    resetAnalogCalibration();
+}
+
+void LineSensor::resetReadState()
+{
+    last_ = {};
+    linePattern(0, last_.padrao);
+    last_.ultimaPosicaoValida = 3500;
+    lastValidPosition_ = 3500;
+    lastDetectionMs_ = millis();
+    clearHistory();
 }
 
 uint32_t LineSensor::timeWithoutLine() const
@@ -332,14 +464,8 @@ uint32_t LineSensor::timeWithoutLine() const
 
 void LineSensor::resetCalibration()
 {
-    qtr_.resetCalibration();
-    resetAnalogCalibration();
-    last_ = {};
-    linePattern(0, last_.padrao);
-    last_.ultimaPosicaoValida = 3500;
-    lastValidPosition_ = 3500;
-    lastDetectionMs_ = millis();
-    clearHistory();
+    resetCalibrationExtremes();
+    resetReadState();
 }
 
 void LineSensor::setHistoryCapacity(uint8_t capacity)

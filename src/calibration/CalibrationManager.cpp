@@ -39,10 +39,10 @@ bool CalibrationManager::reset()
     stopMotors(true);
     return robo_.apagarCalibracao();
 }
-void CalibrationManager::calibrateLine(uint32_t ms)
+bool CalibrationManager::calibrateLine(uint32_t ms)
 {
     stopMotors(true);
-    robo_.calibrarLinha(ms);
+    return robo_.calibrarLinha(ms);
 }
 void CalibrationManager::calibrateImu(uint32_t ms)
 {
