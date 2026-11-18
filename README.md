@@ -1,6 +1,6 @@
 # RoboS3
 
-Biblioteca Arduino/PlatformIO em português para a PCB educacional **ESP_FB V1**, baseada no **ESP32-S3-N8R2**. A API começa simples (`frente`, `parar`, `seguirLinha`) e preserva acesso a valores brutos, calibração, máscara, PID, RGB/HSV/HSL e IMU para o aluno evoluir sem trocar de biblioteca.
+Biblioteca Arduino/PlatformIO em português para a PCB educacional OPENSOURCE **ESP_FB V1**, baseada no **ESP32-S3-N8R2**. A API começa simples (`frente`, `parar`, `seguirLinha`) e preserva acesso a valores brutos, calibração, máscara, PID, RGB/HSV/HSL e IMU para o aluno evoluir sem trocar de biblioteca.
 
 **Versão estável:** 0.4.3 · **Framework:** Arduino · **Arquitetura:** ESP32 · **Licença:** MIT
 
